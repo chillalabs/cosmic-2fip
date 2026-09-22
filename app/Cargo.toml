@@ -1,0 +1,9 @@
+[package]
+name = "cosmic-commander"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fs-ops = { path = "../core" }
+libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["wgpu", "tokio", "single-instance"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

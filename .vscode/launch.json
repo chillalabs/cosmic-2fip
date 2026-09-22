@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug cosmic-commander",
+            "cargo": {
+                "args": ["build", "--bin=cosmic-commander", "-p=cosmic-commander"],
+                "filter": {
+                    "name": "cosmic-commander",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
