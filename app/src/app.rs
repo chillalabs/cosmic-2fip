@@ -26,7 +26,7 @@ use crate::keybinds::{default_keybinds, Action};
 use crate::launch::{self, open_with_default_app, AppEntry, OpenMode};
 use crate::menu_bar::menu_bar;
 use crate::operation::{OpKind, OperationState};
-use crate::pane::{home_dir, PaneMessage, PaneState};
+use crate::pane::{home_dir, PaneMessage, PaneState, SelectMode};
 use crate::tab::tab_label;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,6 +93,9 @@ pub enum Message {
     IconStyleSelected(usize),
     CloseDrawer,
 }
+
+/// Index of "Skip" in `App::conflict_buttons`: the safe default focus.
+const CONFLICT_SKIP: usize = 2;
 
 /// Languages offered in Settings, as (code, display name).
 const LANGUAGES: [(&str, &str); 1] = [("en", "English")];
@@ -169,6 +172,10 @@ pub struct App {
     dialog_cancel: widget::Id,
     /// Which of those has keyboard focus: 0 text field, 1 confirm, 2 cancel.
     dialog_focus: usize,
+    /// The "File Already Exists" buttons in on-screen order: Skip All,
+    /// Replace All, Skip, Replace; and which one has keyboard focus.
+    conflict_buttons: [widget::Id; 4],
+    conflict_focus: usize,
     /// Which Delete dialog button has keyboard focus (true = Delete).
     delete_focus_on_confirm: bool,
     /// The favorite highlighted for keyboard use (↑/↓ to move, Enter to open)
@@ -252,6 +259,23 @@ impl App {
                         return task;
                     }
                 }
+                // Tab / → and Shift+Tab / ← move focus between the "File Already
+                // Exists" buttons; Enter runs the focused one (the button itself
+                // handles Enter).
+                if self.pending_conflict.is_some() {
+                    let forward = match (&key, modifiers) {
+                        (Key::Named(Named::Tab), m) if m.is_empty() => Some(true),
+                        (Key::Named(Named::Tab), m) if m == Modifiers::SHIFT => Some(false),
+                        (Key::Named(Named::ArrowRight), m) if m.is_empty() => Some(true),
+                        (Key::Named(Named::ArrowLeft), m) if m.is_empty() => Some(false),
+                        _ => None,
+                    };
+                    if let Some(forward) = forward {
+                        let count = self.conflict_buttons.len();
+                        let step = if forward { 1 } else { count - 1 };
+                        return self.focus_conflict_button(self.conflict_focus + step);
+                    }
+                }
                 // Tab / Shift+Tab move focus around the text dialogs (libcosmic's
                 // own keyboard navigation is off, see `init`).
                 if key == Key::Named(Named::Tab)
@@ -290,7 +314,8 @@ impl App {
                 }
                 OpEvent::Conflict { src, dest } => {
                     self.pending_conflict = Some((src, dest));
-                    Task::none()
+                    // Start on Skip: Enter then never overwrites anything.
+                    self.focus_conflict_button(CONFLICT_SKIP)
                 }
                 OpEvent::Done => {
                     self.operation = None;
@@ -669,6 +694,24 @@ impl App {
             Action::GoForward => self.pane_mut(self.active_pane).update(PaneMessage::GoForward),
             Action::GoUp => self.pane_mut(self.active_pane).update(PaneMessage::GoUp),
             Action::SelectNext => self.pane_mut(self.active_pane).update(PaneMessage::SelectNext),
+            Action::SelectFirst
+            | Action::SelectLast
+            | Action::ExtendSelectionToFirst
+            | Action::ExtendSelectionToLast => {
+                let last = matches!(action, Action::SelectLast | Action::ExtendSelectionToLast);
+                let extend = matches!(
+                    action,
+                    Action::ExtendSelectionToFirst | Action::ExtendSelectionToLast
+                );
+                self.pane_mut(self.active_pane)
+                    .update(PaneMessage::SelectEdge { last, extend })
+            }
+            Action::ExtendSelectionDown => self
+                .pane_mut(self.active_pane)
+                .update(PaneMessage::ExtendSelection(true)),
+            Action::ExtendSelectionUp => self
+                .pane_mut(self.active_pane)
+                .update(PaneMessage::ExtendSelection(false)),
             Action::SelectPrevious => self
                 .pane_mut(self.active_pane)
                 .update(PaneMessage::SelectPrevious),
@@ -1002,6 +1045,12 @@ impl App {
         })
     }
 
+    /// Focuses button `index` of the "File Already Exists" dialog.
+    fn focus_conflict_button(&mut self, index: usize) -> Task<Message> {
+        self.conflict_focus = index % self.conflict_buttons.len();
+        widget::button::focus(self.conflict_buttons[self.conflict_focus].clone())
+    }
+
     /// Whether a dialog with a text field (Rename, New Folder, Compress) is
     /// the one showing.
     fn text_dialog_showing(&self) -> bool {
@@ -1172,6 +1221,8 @@ impl Application for App {
             dialog_confirm: widget::Id::unique(),
             dialog_cancel: widget::Id::unique(),
             dialog_focus: 0,
+            conflict_buttons: std::array::from_fn(|_| widget::Id::unique()),
+            conflict_focus: CONFLICT_SKIP,
             delete_focus_on_confirm: true,
             clipboard: None,
             compress: None,
@@ -1275,14 +1326,17 @@ impl Application for App {
                 tab_label(dest),
                 tab_label(src)
             );
+            let [skip_all_id, replace_all_id, skip_id, replace_id] = self.conflict_buttons.clone();
             let all_buttons = widget::Row::new()
                 .spacing(8)
                 .push(
                     widget::button::standard("Skip All")
+                        .id(skip_all_id)
                         .on_press(Message::ResolveConflict(ConflictResolution::SkipAll)),
                 )
                 .push(
                     widget::button::standard("Replace All")
+                        .id(replace_all_id)
                         .on_press(Message::ResolveConflict(ConflictResolution::ReplaceAll)),
                 );
             return Some(
@@ -1292,10 +1346,12 @@ impl Application for App {
                     .control(all_buttons)
                     .primary_action(
                         widget::button::destructive("Replace")
+                            .id(replace_id)
                             .on_press(Message::ResolveConflict(ConflictResolution::Replace)),
                     )
                     .secondary_action(
                         widget::button::standard("Skip")
+                            .id(skip_id)
                             .on_press(Message::ResolveConflict(ConflictResolution::Skip)),
                     )
                     .into(),
@@ -1414,41 +1470,100 @@ impl Application for App {
         None
     }
 
+    /// The progress panel of a running copy / move / delete / compress: a
+    /// strong accent-colored bar (red on error) with a thick progress line,
+    /// the percentage, how much is done and the current file.
     fn footer(&self) -> Option<Element<'_, Message>> {
         let op = self.operation.as_ref()?;
+        let failed = op.error.is_some();
+        let percent = (op.fraction() * 100.0).round() as u32;
 
-        let status = match &op.error {
-            Some(err) => format!("{}: {err}", op.kind.label()),
-            None => match &op.current_file {
-                Some(file) => format!(
-                    "{} {} ({}/{})",
-                    op.kind.label(),
-                    file.display(),
-                    op.files_done,
-                    op.files_total
-                ),
-                None => format!("{}…", op.kind.label()),
-            },
+        let title = match &op.error {
+            Some(_) => format!("{} failed", op.kind.label()),
+            None => format!("{} {percent}%", op.kind.label()),
+        };
+        let mut amounts = Vec::new();
+        if op.files_total > 0 {
+            amounts.push(format!("{} of {} files", op.files_done, op.files_total));
+        }
+        if op.bytes_total > 0 {
+            amounts.push(format!(
+                "{} of {}",
+                format_size(op.bytes_done),
+                format_size(op.bytes_total)
+            ));
+        }
+        let detail = match (&op.error, &op.current_file) {
+            (Some(err), _) => err.clone(),
+            (None, Some(file)) => format!("{}  —  {}", amounts.join("  ·  "), tab_label(file)),
+            (None, None) => "Preparing…".to_string(),
         };
 
-        let row = widget::Row::new()
-            .spacing(8)
-            .align_y(Alignment::Center)
-            .push(widget::text(status).width(Length::Fill))
-            .push(widget::determinate_linear(op.fraction()).width(Length::Fixed(240.0)))
-            .push(widget::button::standard("Cancel").on_press(Message::CancelOperation));
+        // The theme's colors, resolved now: the bar's style takes plain colors.
+        let theme = cosmic::theme::active();
+        let cosmic = theme.cosmic();
+        let background: cosmic::iced::Color = if failed {
+            cosmic.destructive_color().into()
+        } else {
+            cosmic.accent_color().into()
+        };
+        let foreground: cosmic::iced::Color = cosmic.on_accent_color().into();
 
-        Some(widget::container(row).padding(8).into())
+        let header = widget::Row::new()
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .push(widget::text::title4(title))
+            .push(
+                widget::text::body(detail)
+                    .width(Length::Fill)
+                    .wrapping(cosmic::iced::core::text::Wrapping::None),
+            )
+            .push(
+                widget::button::standard(if failed { "Close" } else { "Cancel" })
+                    .on_press(Message::CancelOperation),
+            );
+        let bar = widget::determinate_linear(op.fraction())
+            .width(Length::Fill)
+            .girth(10)
+            .class(
+                cosmic::widget::progress_bar::style::Class::default()
+                    .bar_color(foreground)
+                    .track_color(cosmic::iced::Color {
+                        a: 0.3,
+                        ..foreground
+                    }),
+            );
+
+        let panel = widget::Column::new().spacing(8).push(header).push(bar);
+        Some(
+            widget::container(panel)
+                .padding([10, 14])
+                .width(Length::Fill)
+                .class(cosmic::theme::Container::custom(move |theme| {
+                    widget::container::Style {
+                        text_color: Some(foreground),
+                        icon_color: Some(foreground),
+                        background: Some(cosmic::iced::Background::Color(background)),
+                        border: cosmic::iced::Border {
+                            radius: theme.cosmic().radius_s().into(),
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    }
+                }))
+                .into(),
+        )
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let additive_select = self.modifiers.control();
+        // How a click on a file changes the selection (Ctrl / Shift held).
+        let select_mode = SelectMode::from_modifiers(self.modifiers);
         let can_paste = self.clipboard.is_some();
         let left = self
             .left
             .view(
                 self.active_pane == PaneId::Left,
-                additive_select,
+                select_mode,
                 &self.keybinds,
                 can_paste,
             )
@@ -1457,7 +1572,7 @@ impl Application for App {
             .right
             .view(
                 self.active_pane == PaneId::Right,
-                additive_select,
+                select_mode,
                 &self.keybinds,
                 can_paste,
             )

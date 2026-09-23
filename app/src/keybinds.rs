@@ -31,6 +31,14 @@ pub enum Action {
     GoUp,
     SelectNext,
     SelectPrevious,
+    /// Shift+↓ / Shift+↑: grow or shrink the selection by one row.
+    ExtendSelectionDown,
+    ExtendSelectionUp,
+    /// Home / End: first / last item; with Shift, extend the selection there.
+    SelectFirst,
+    SelectLast,
+    ExtendSelectionToFirst,
+    ExtendSelectionToLast,
     EnterSelectedFolder,
     /// Total Commander's quick filter: list only names matching typed text.
     QuickFilter,
@@ -101,6 +109,12 @@ pub fn default_keybinds() -> HashMap<KeyBind, Action> {
     bind(&[], Key::Named(Named::ArrowRight), Action::EnterSelectedFolder);
     bind(&[], Key::Named(Named::ArrowDown), Action::SelectNext);
     bind(&[], Key::Named(Named::ArrowUp), Action::SelectPrevious);
+    bind(&[Modifier::Shift], Key::Named(Named::ArrowDown), Action::ExtendSelectionDown);
+    bind(&[Modifier::Shift], Key::Named(Named::ArrowUp), Action::ExtendSelectionUp);
+    bind(&[], Key::Named(Named::Home), Action::SelectFirst);
+    bind(&[], Key::Named(Named::End), Action::SelectLast);
+    bind(&[Modifier::Shift], Key::Named(Named::Home), Action::ExtendSelectionToFirst);
+    bind(&[Modifier::Shift], Key::Named(Named::End), Action::ExtendSelectionToLast);
     bind(&[Modifier::Ctrl], Key::Character("s".into()), Action::QuickFilter);
     bind(&[], Key::Named(Named::F9), Action::Terminal);
     bind(&[], Key::Named(Named::F3), Action::View);

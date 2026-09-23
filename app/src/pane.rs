@@ -18,6 +18,29 @@ use crate::tab::{tab_label, PendingSelect, TabState};
 
 pub type TabId = segmented_button::Entity;
 
+/// What a click on an entry does to the selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectMode {
+    /// Plain click: select only this entry.
+    Replace,
+    /// Ctrl+click: add it to the selection, or remove it if selected.
+    Toggle,
+    /// Shift+click: select everything from the anchor to it.
+    Range,
+}
+
+impl SelectMode {
+    pub fn from_modifiers(modifiers: cosmic::iced::keyboard::Modifiers) -> Self {
+        if modifiers.control() {
+            SelectMode::Toggle
+        } else if modifiers.shift() {
+            SelectMode::Range
+        } else {
+            SelectMode::Replace
+        }
+    }
+}
+
 /// Identifies a file's thumbnail: its path plus modification time (seconds),
 /// so an edited file gets a new preview.
 pub type ThumbnailKey = (PathBuf, u64);
@@ -31,9 +54,14 @@ const MAX_THUMBNAILS_PER_FOLDER: usize = 2000;
 pub enum PaneMessage {
     DirLoaded(TabId, PathBuf, Result<Vec<fs_ops::DirEntry>, String>),
     EntryDoubleClicked(table::Entity),
-    /// `additive` is true when the click was Ctrl-held: toggle this item's
-    /// selection without touching the others. Otherwise, select only this item.
-    EntrySelected(table::Entity, bool),
+    /// A click on an entry; how it changes the selection depends on the
+    /// modifier keys held (see [`SelectMode`]).
+    EntrySelected(table::Entity, SelectMode),
+    /// Shift+↓ (`true`) / Shift+↑: extends the selection by one row.
+    ExtendSelection(bool),
+    /// Home / End (`last`): jump to the first / last row; `extend` when Shift
+    /// is held (select from the anchor to there).
+    SelectEdge { last: bool, extend: bool },
     /// Right-click: selects the item unless it's already part of the
     /// selection, so context-menu actions apply to what was clicked.
     EntryRightClicked(table::Entity),
@@ -200,15 +228,29 @@ impl PaneState {
                 open_with_default_app(&item.path);
                 Task::none()
             }
-            PaneMessage::EntrySelected(entity, additive) => {
+            PaneMessage::EntrySelected(entity, mode) => {
                 if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
-                    if additive {
-                        tab_state.entries.activate(entity);
-                    } else {
-                        tab_state.select_only(entity);
+                    match mode {
+                        SelectMode::Replace => tab_state.select_only(entity),
+                        SelectMode::Toggle => tab_state.toggle(entity),
+                        SelectMode::Range => tab_state.select_range_to(entity),
                     }
                 }
                 Task::none()
+            }
+            PaneMessage::SelectEdge { last, extend } => {
+                let selected = self
+                    .tabs
+                    .active_data_mut::<TabState>()
+                    .and_then(|tab_state| tab_state.select_edge(last, extend));
+                self.scroll_to_row(selected)
+            }
+            PaneMessage::ExtendSelection(forward) => {
+                let selected = self
+                    .tabs
+                    .active_data_mut::<TabState>()
+                    .and_then(|tab_state| tab_state.extend_selection(forward));
+                self.scroll_to_row(selected)
             }
             PaneMessage::EntryRightClicked(entity) => {
                 if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
@@ -229,7 +271,8 @@ impl PaneState {
                 if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
                     let all: Vec<_> = tab_state.entries.iter().collect();
                     for entity in all {
-                        tab_state.entries.activate(entity);
+                        // Not `activate`: that toggles already-selected rows off.
+                        tab_state.set_selected(entity, true);
                     }
                 }
                 Task::none()
@@ -667,7 +710,7 @@ impl PaneState {
     pub fn view(
         &self,
         is_active: bool,
-        additive_select: bool,
+        select_mode: SelectMode,
         keybinds: &HashMap<KeyBind, Action>,
         can_paste: bool,
     ) -> Element<'_, PaneMessage> {
@@ -724,7 +767,7 @@ impl PaneState {
                                 widget::scrollable(list_view(
                                     self,
                                     t,
-                                    additive_select,
+                                    select_mode,
                                     keybinds,
                                     can_paste,
                                 ))
@@ -741,7 +784,7 @@ impl PaneState {
                                     self,
                                     t,
                                     size.width,
-                                    additive_select,
+                                    select_mode,
                                     &keybinds,
                                     can_paste,
                                 ))
@@ -968,7 +1011,7 @@ fn list_header(tab_state: &TabState) -> Element<'_, PaneMessage> {
 fn list_view<'a>(
     pane: &'a PaneState,
     tab_state: &'a TabState,
-    additive_select: bool,
+    select_mode: SelectMode,
     keybinds: &HashMap<KeyBind, Action>,
     can_paste: bool,
 ) -> Element<'a, PaneMessage> {
@@ -1005,7 +1048,7 @@ fn list_view<'a>(
             .width(Length::Fill)
             .class(selection_class(tab_state.entries.is_active(entity)));
         let area = widget::mouse_area(row)
-            .on_press(PaneMessage::EntrySelected(entity, additive_select))
+            .on_press(PaneMessage::EntrySelected(entity, select_mode))
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
         rows = rows.push(widget::context_menu(area, item_menu(keybinds, item, can_paste)));
@@ -1032,7 +1075,7 @@ fn grid_view<'a>(
     pane: &'a PaneState,
     tab_state: &'a TabState,
     width: f32,
-    additive_select: bool,
+    select_mode: SelectMode,
     keybinds: &HashMap<KeyBind, Action>,
     can_paste: bool,
 ) -> Element<'a, PaneMessage> {
@@ -1066,7 +1109,7 @@ fn grid_view<'a>(
             .clip(true)
             .class(selection_class(selected));
         let area = widget::mouse_area(cell)
-            .on_press(PaneMessage::EntrySelected(entity, additive_select))
+            .on_press(PaneMessage::EntrySelected(entity, select_mode))
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
         cells.push(widget::context_menu(area, item_menu(keybinds, item, can_paste)).into());

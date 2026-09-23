@@ -32,6 +32,10 @@ pub struct TabState {
     /// Sort column and direction (`true` = ascending). Folders always come
     /// first either way.
     sort: (Column, bool),
+    /// Where a range selection (Shift+arrows / Shift+click) starts, and where
+    /// the keyboard currently is. Kept as paths so they survive reloads.
+    anchor: Option<PathBuf>,
+    cursor: Option<PathBuf>,
 }
 
 /// A selection to apply after navigating, so the keyboard keeps its place.
@@ -61,6 +65,8 @@ impl TabState {
             stashed_selection: None,
             view_mode: ViewMode::default(),
             sort: (Column::Name, true),
+            anchor: None,
+            cursor: None,
         }
     }
 
@@ -110,33 +116,141 @@ impl TabState {
                 .item(entity)
                 .is_some_and(|item| paths.contains(&item.path))
             {
-                self.entries.activate(entity);
+                self.set_selected(entity, true);
             }
         }
     }
 
-    /// Selects only `entity`, clearing any other selection.
+    fn path_of(&self, entity: table::Entity) -> Option<PathBuf> {
+        self.entries.item(entity).map(|item| item.path.clone())
+    }
+
+    /// Position of the row showing `path`, if it's listed.
+    fn position_of(&self, order: &[table::Entity], path: Option<&PathBuf>) -> Option<usize> {
+        let path = path?;
+        order
+            .iter()
+            .position(|e| self.entries.item(*e).is_some_and(|item| &item.path == path))
+    }
+
+    /// Where the keyboard is: the cursor row, else the edge of the selection
+    /// in the direction of travel (last selected going down, first going up).
+    fn cursor_position(&self, order: &[table::Entity], forward: bool) -> Option<usize> {
+        self.position_of(order, self.cursor.as_ref()).or_else(|| {
+            if forward {
+                order.iter().rposition(|e| self.entries.is_active(*e))
+            } else {
+                order.iter().position(|e| self.entries.is_active(*e))
+            }
+        })
+    }
+
+    /// Selects only `entity`, clearing any other selection; it becomes both
+    /// the anchor and the cursor.
     pub fn select_only(&mut self, entity: table::Entity) {
         let currently_selected: Vec<_> = self.entries.active().collect();
         for other in currently_selected {
             self.entries.deactivate(other);
         }
         self.entries.activate(entity);
+        self.anchor = self.path_of(entity);
+        self.cursor = self.anchor.clone();
     }
 
-    /// Moves the selection one row down (`forward`) or up, like a keyboard
-    /// cursor. From a multi-selection it moves from its last/first row; with
-    /// nothing selected it starts at the first row. Returns the new row's
-    /// position and the row count.
+    /// Ctrl+click: adds `entity` to the selection, or removes it if it was
+    /// already selected. It becomes the new anchor and cursor.
+    pub fn toggle(&mut self, entity: table::Entity) {
+        let selected = self.entries.is_active(entity);
+        self.set_selected(entity, !selected);
+        self.anchor = self.path_of(entity);
+        self.cursor = self.anchor.clone();
+    }
+
+    /// Selects or unselects one row. (The table model's own `activate`
+    /// *toggles* in multi-select mode, so it must not be called on a row that
+    /// may already be selected.)
+    pub fn set_selected(&mut self, entity: table::Entity, selected: bool) {
+        if selected && !self.entries.is_active(entity) {
+            self.entries.activate(entity);
+        } else if !selected {
+            self.entries.deactivate(entity);
+        }
+    }
+
+    /// Selects exactly the rows from `from` to `to` (inclusive, either order).
+    fn select_range(&mut self, order: &[table::Entity], from: usize, to: usize) {
+        let (start, end) = (from.min(to), from.max(to));
+        for (position, entity) in order.iter().enumerate() {
+            self.set_selected(*entity, (start..=end).contains(&position));
+        }
+    }
+
+    /// Shift+click: selects every row between the anchor and `entity`;
+    /// `entity` becomes the cursor (the anchor stays, so ranges can be redone).
+    pub fn select_range_to(&mut self, entity: table::Entity) {
+        let order: Vec<table::Entity> = self.entries.iter().collect();
+        let Some(target) = order.iter().position(|e| *e == entity) else {
+            return;
+        };
+        let anchor = self
+            .position_of(&order, self.anchor.as_ref())
+            .or_else(|| self.cursor_position(&order, true))
+            .unwrap_or(target);
+        self.select_range(&order, anchor, target);
+        self.anchor = self.path_of(order[anchor]);
+        self.cursor = self.path_of(entity);
+    }
+
+    /// Shift+↓ / Shift+↑: moves the cursor one row and selects everything
+    /// between the anchor and it, so going back the other way shrinks the
+    /// selection again. With nothing selected it starts at the first row.
+    /// Returns the cursor's position and the row count.
+    pub fn extend_selection(&mut self, forward: bool) -> Option<(usize, usize)> {
+        let order: Vec<table::Entity> = self.entries.iter().collect();
+        let count = order.len();
+        let Some(cursor) = self.cursor_position(&order, forward) else {
+            self.select_only(*order.first()?);
+            return Some((0, count));
+        };
+        let anchor = self.position_of(&order, self.anchor.as_ref()).unwrap_or(cursor);
+        let target = if forward {
+            (cursor + 1).min(count - 1)
+        } else {
+            cursor.saturating_sub(1)
+        };
+        self.select_range(&order, anchor, target);
+        self.anchor = self.path_of(order[anchor]);
+        self.cursor = self.path_of(order[target]);
+        Some((target, count))
+    }
+
+    /// Home / End: jumps to the first (`last == false`) or last row. With
+    /// `extend` (Shift held) it selects from the anchor to there instead of
+    /// just that row. Returns the row's position and the row count.
+    pub fn select_edge(&mut self, last: bool, extend: bool) -> Option<(usize, usize)> {
+        let order: Vec<table::Entity> = self.entries.iter().collect();
+        let count = order.len();
+        let target = if last { count.checked_sub(1)? } else { 0 };
+        let entity = *order.get(target)?;
+        if extend {
+            self.select_range_to(entity);
+        } else {
+            self.select_only(entity);
+        }
+        Some((target, count))
+    }
+
+    /// Moves the selection one row down (`forward`) or up from the cursor,
+    /// like a keyboard cursor, selecting only that row. With nothing selected
+    /// it starts at the first row. Returns the new row's position and the row
+    /// count.
     pub fn move_selection(&mut self, forward: bool) -> Option<(usize, usize)> {
         let order: Vec<table::Entity> = self.entries.iter().collect();
         let count = order.len();
-        let first_selected = order.iter().position(|e| self.entries.is_active(*e));
-        let last_selected = order.iter().rposition(|e| self.entries.is_active(*e));
-        let target = match (first_selected, last_selected) {
-            (Some(_), Some(last)) if forward => (last + 1).min(count.checked_sub(1)?),
-            (Some(first), Some(_)) => first.saturating_sub(1),
-            _ => 0,
+        let target = match self.cursor_position(&order, forward) {
+            Some(cursor) if forward => (cursor + 1).min(count.checked_sub(1)?),
+            Some(cursor) => cursor.saturating_sub(1),
+            None => 0,
         };
         self.select_only(*order.get(target)?);
         Some((target, count))
@@ -372,12 +486,16 @@ mod tests {
         tab
     }
 
+    /// Selected names, sorted (the model keeps its selection unordered).
     fn selected_names(tab: &TabState) -> Vec<String> {
-        tab.entries
+        let mut names: Vec<String> = tab
+            .entries
             .active()
             .filter_map(|e| tab.entries.item(e))
             .map(|item| tab_label(&item.path))
-            .collect()
+            .collect();
+        names.sort();
+        names
     }
 
     #[test]
@@ -460,6 +578,69 @@ mod tests {
 
         tab.restore_selection();
         assert_eq!(selected_names(&tab), ["b"]);
+    }
+
+    #[test]
+    fn shift_arrows_extend_from_the_anchor_and_shrink_back() {
+        let mut tab = tab_with(&["a", "b", "c", "d"]);
+        tab.move_selection(true); // a
+        tab.move_selection(true); // b
+
+        assert_eq!(tab.extend_selection(true), Some((2, 4)));
+        assert_eq!(tab.extend_selection(true), Some((3, 4)));
+        assert_eq!(selected_names(&tab), ["b", "c", "d"]);
+        assert_eq!(tab.extend_selection(true), Some((3, 4)), "stops at the end");
+
+        tab.extend_selection(false);
+        assert_eq!(selected_names(&tab), ["b", "c"], "going back shrinks it");
+        tab.extend_selection(false);
+        tab.extend_selection(false);
+        assert_eq!(selected_names(&tab), ["a", "b"], "then grows past the anchor");
+    }
+
+    #[test]
+    fn plain_arrows_continue_from_the_cursor() {
+        let mut tab = tab_with(&["a", "b", "c", "d"]);
+        tab.move_selection(true); // a
+        tab.extend_selection(true); // a..b
+        tab.extend_selection(true); // a..c
+        assert_eq!(tab.move_selection(false), Some((1, 4)));
+        assert_eq!(selected_names(&tab), ["b"]);
+    }
+
+    #[test]
+    fn shift_click_selects_a_range_and_ctrl_click_toggles() {
+        let mut tab = tab_with(&["a", "b", "c", "d"]);
+        let order: Vec<_> = tab.entries.iter().collect();
+        tab.select_only(order[3]); // d
+        tab.select_range_to(order[1]); // b..d
+        assert_eq!(selected_names(&tab), ["b", "c", "d"]);
+
+        tab.toggle(order[2]); // remove c
+        assert_eq!(selected_names(&tab), ["b", "d"]);
+        tab.toggle(order[2]); // add it back
+        assert_eq!(selected_names(&tab), ["b", "c", "d"]);
+    }
+
+    #[test]
+    fn extending_with_nothing_selected_starts_at_the_top() {
+        let mut tab = tab_with(&["a", "b"]);
+        assert_eq!(tab.extend_selection(true), Some((0, 2)));
+        assert_eq!(selected_names(&tab), ["a"]);
+    }
+
+    #[test]
+    fn home_and_end_jump_to_the_edges_and_shift_extends() {
+        let mut tab = tab_with(&["a", "b", "c", "d"]);
+        assert_eq!(tab.select_edge(true, false), Some((3, 4)));
+        assert_eq!(selected_names(&tab), ["d"]);
+        assert_eq!(tab.select_edge(false, false), Some((0, 4)));
+        assert_eq!(selected_names(&tab), ["a"]);
+
+        tab.move_selection(true); // b
+        assert_eq!(tab.select_edge(true, true), Some((3, 4)));
+        assert_eq!(selected_names(&tab), ["b", "c", "d"]);
+        assert!(tab_with(&[]).select_edge(true, false).is_none());
     }
 
     #[test]
