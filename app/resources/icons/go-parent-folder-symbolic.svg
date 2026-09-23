@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- "Up one level": a line going left, then up, ending in an up arrowhead.
+       Drawn small (inside a 10x9 box) since the button adds "[..]" beside it. -->
+  <path d="M12 12H6.5A1.5 1.5 0 0 1 5 10.5V5" fill="none" stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M2.5 7.5L5 5L7.5 7.5" fill="none" stroke="#000" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
