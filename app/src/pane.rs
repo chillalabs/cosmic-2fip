@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use cosmic::app::Task;
@@ -11,12 +11,21 @@ use cosmic::Element;
 use crate::app::{Message, PaneId};
 use crate::context_menu::item_menu;
 use fs_ops::settings::ViewMode;
-use crate::file_item::{format_size, Column, ListingOptions};
+use crate::file_item::{format_size, Column, FileItem, ListingOptions};
 use crate::keybinds::Action;
 use crate::launch::open_with_default_app;
 use crate::tab::{tab_label, PendingSelect, TabState};
 
 pub type TabId = segmented_button::Entity;
+
+/// Identifies a file's thumbnail: its path plus modification time (seconds),
+/// so an edited file gets a new preview.
+pub type ThumbnailKey = (PathBuf, u64);
+
+/// At most this many thumbnails are loaded or generated at once.
+const THUMBNAIL_WORKERS: usize = 4;
+/// Folders with more previewable files than this only preview the first ones.
+const MAX_THUMBNAILS_PER_FOLDER: usize = 2000;
 
 #[derive(Debug, Clone)]
 pub enum PaneMessage {
@@ -30,6 +39,8 @@ pub enum PaneMessage {
     EntryRightClicked(table::Entity),
     /// A context-menu action; handled by the app, not the pane.
     Action(Action),
+    /// A content preview finished loading (`None`: none could be made).
+    ThumbnailReady(ThumbnailKey, Option<PathBuf>),
     SelectAll,
     /// Keyboard cursor: select the next / previous row.
     SelectNext,
@@ -76,6 +87,11 @@ pub struct PaneState {
     /// Why the typed path couldn't be opened, shown under the path bar.
     path_edit_error: Option<String>,
     path_input_id: widget::Id,
+    /// Loaded content previews, shown instead of type icons.
+    thumbnails: HashMap<ThumbnailKey, widget::icon::Handle>,
+    /// Previews already asked for (loaded, loading, or failed), so each file
+    /// is only tried once.
+    thumbnails_requested: HashSet<ThumbnailKey>,
 }
 
 impl PaneState {
@@ -113,6 +129,8 @@ impl PaneState {
             path_edit: None,
             path_edit_error: None,
             path_input_id: widget::Id::unique(),
+            thumbnails: HashMap::new(),
+            thumbnails_requested: HashSet::new(),
         };
         (pane, Task::batch(tasks))
     }
@@ -161,11 +179,12 @@ impl PaneState {
                     }
                 }
                 let selected = tab_state.apply_pending_select();
-                if self.tabs.is_active(tab) {
+                let scroll = if self.tabs.is_active(tab) {
                     self.scroll_to_row(selected)
                 } else {
                     Task::none()
-                }
+                };
+                Task::batch([scroll, self.request_thumbnails(tab)])
             }
             PaneMessage::EntryDoubleClicked(entity) => {
                 let Some(tab_state) = self.tabs.active_data::<TabState>() else {
@@ -200,6 +219,12 @@ impl PaneState {
                 Task::none()
             }
             PaneMessage::Action(_) => Task::none(),
+            PaneMessage::ThumbnailReady(key, thumbnail) => {
+                if let Some(png) = thumbnail {
+                    self.thumbnails.insert(key, widget::icon::from_path(png));
+                }
+                Task::none()
+            }
             PaneMessage::SelectAll => {
                 if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
                     let all: Vec<_> = tab_state.entries.iter().collect();
@@ -493,14 +518,80 @@ impl PaneState {
     }
 
     /// Applies new display options (hidden files, icons) to every tab of this pane.
-    pub fn set_options(&mut self, options: ListingOptions) {
+    pub fn set_options(&mut self, options: ListingOptions) -> Task<Message> {
         self.options = options;
         let tabs: Vec<TabId> = self.tabs.iter().collect();
+        let mut tasks = Vec::new();
         for tab in tabs {
             if let Some(tab_state) = self.tabs.data_mut::<TabState>(tab) {
                 tab_state.rebuild(&self.options);
             }
+            // e.g. thumbnails were just switched on
+            tasks.push(self.request_thumbnails(tab));
         }
+        Task::batch(tasks)
+    }
+
+    /// Starts loading previews for `tab`'s previewable files that don't have
+    /// one yet (from the shared cache, or made by a system thumbnailer).
+    /// Runs in the background, a few at a time; each result updates the view.
+    fn request_thumbnails(&mut self, tab: TabId) -> Task<Message> {
+        if !self.options.show_thumbnails {
+            return Task::none();
+        }
+        let Some(tab_state) = self.tabs.data::<TabState>(tab) else {
+            return Task::none();
+        };
+        let mut wanted = Vec::new();
+        for entity in tab_state.entries.iter() {
+            let Some(item) = tab_state.entries.item(entity) else {
+                continue;
+            };
+            let (Some(mime), Some(modified)) = (item.mime(), item.modified()) else {
+                continue;
+            };
+            if !fs_ops::thumbnail::can_thumbnail(mime) {
+                continue;
+            }
+            let key = (item.path.clone(), fs_ops::thumbnail::secs(modified));
+            if !self.thumbnails_requested.contains(&key) {
+                wanted.push((key, mime.to_string()));
+            }
+            if wanted.len() >= MAX_THUMBNAILS_PER_FOLDER {
+                break;
+            }
+        }
+
+        let pane = self.id;
+        let tasks = wanted.into_iter().map(|(key, mime)| {
+            self.thumbnails_requested.insert(key.clone());
+            cosmic::task::future(async move {
+                let _permit = thumbnail_workers().acquire().await.ok();
+                let path = key.0.clone();
+                let thumbnail = tokio::task::spawn_blocking(move || {
+                    fs_ops::thumbnail::thumbnail(&path, &mime)
+                })
+                .await
+                .ok()
+                .flatten();
+                Message::Pane(pane, PaneMessage::ThumbnailReady(key, thumbnail))
+            })
+        });
+        Task::batch(tasks.collect::<Vec<_>>())
+    }
+
+    /// The picture for `item`: its content preview when thumbnails are on and
+    /// one is loaded, else its file-type icon.
+    fn item_icon(&self, item: &FileItem) -> widget::icon::Handle {
+        if self.options.show_thumbnails {
+            if let Some(modified) = item.modified() {
+                let key = (item.path.clone(), fs_ops::thumbnail::secs(modified));
+                if let Some(thumbnail) = self.thumbnails.get(&key) {
+                    return thumbnail.clone();
+                }
+            }
+        }
+        item.icon().clone()
     }
 
     /// The active tab's current directory.
@@ -631,6 +722,7 @@ impl PaneState {
                             .push(widget::divider::horizontal::default())
                             .push(
                                 widget::scrollable(list_view(
+                                    self,
                                     t,
                                     additive_select,
                                     keybinds,
@@ -646,6 +738,7 @@ impl PaneState {
                             let scroll_id = self.scroll_id.clone();
                             widget::responsive(move |size| {
                                 widget::scrollable(grid_view(
+                                    self,
                                     t,
                                     size.width,
                                     additive_select,
@@ -873,6 +966,7 @@ fn list_header(tab_state: &TabState) -> Element<'_, PaneMessage> {
 /// line and ends in "…" instead of running into the next column. Click
 /// selects (Ctrl adds), double-click opens, right-click shows the menu.
 fn list_view<'a>(
+    pane: &'a PaneState,
     tab_state: &'a TabState,
     additive_select: bool,
     keybinds: &HashMap<KeyBind, Action>,
@@ -894,7 +988,7 @@ fn list_view<'a>(
                 widget::Row::new()
                     .spacing(8)
                     .align_y(cosmic::iced::Alignment::Center)
-                    .push(widget::icon::from_name(item.icon_name()).size(LIST_ICON_SIZE))
+                    .push(widget::icon(pane.item_icon(item)).size(LIST_ICON_SIZE))
                     .push(text)
                     .into()
             } else {
@@ -935,6 +1029,7 @@ fn grid_columns(width: f32) -> usize {
 /// wrapping into rows to fill the pane. Same interactions as the list: click
 /// selects (Ctrl adds), double-click opens, right-click shows the context menu.
 fn grid_view<'a>(
+    pane: &'a PaneState,
     tab_state: &'a TabState,
     width: f32,
     additive_select: bool,
@@ -954,7 +1049,7 @@ fn grid_view<'a>(
             .spacing(4)
             .align_x(cosmic::iced::Alignment::Center)
             .width(Length::Fill)
-            .push(widget::icon::from_name(item.icon_name()).size(GRID_ICON_SIZE))
+            .push(widget::icon(pane.item_icon(item)).size(GRID_ICON_SIZE))
             .push(
                 // Up to 3 lines, like COSMIC Files; long words break too
                 // (with plain word wrapping a name without spaces spilled
@@ -1033,6 +1128,13 @@ fn parent_folder_icon() -> widget::icon::Handle {
     );
     handle.symbolic = true;
     handle
+}
+
+/// Limits how many thumbnails are loaded or generated at the same time, so a
+/// folder of photos doesn't start hundreds of thumbnailer processes at once.
+fn thumbnail_workers() -> &'static tokio::sync::Semaphore {
+    static WORKERS: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    WORKERS.get_or_init(|| tokio::sync::Semaphore::new(THUMBNAIL_WORKERS))
 }
 
 fn load_dir(pane: PaneId, tab: TabId, path: PathBuf) -> Task<Message> {

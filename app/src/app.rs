@@ -86,6 +86,7 @@ pub enum Message {
     DetailsLoaded(Vec<PathBuf>, Result<Details, String>),
     CloseDetails,
     HideHiddenFilesToggled(bool),
+    ThumbnailsToggled(bool),
     /// Index into [`LANGUAGES`]. Stored only; not applied yet.
     LanguageSelected(usize),
     /// Index into [`ICON_STYLES`].
@@ -161,6 +162,13 @@ pub struct App {
     /// The Delete dialog's buttons, so the keyboard can move focus between them.
     confirm_delete_button: widget::Id,
     cancel_delete_button: widget::Id,
+    /// The Rename / New Folder / Compress dialogs' text field and buttons
+    /// (only one dialog shows at a time), for moving focus with Tab.
+    dialog_input: widget::Id,
+    dialog_confirm: widget::Id,
+    dialog_cancel: widget::Id,
+    /// Which of those has keyboard focus: 0 text field, 1 confirm, 2 cancel.
+    dialog_focus: usize,
     /// Which Delete dialog button has keyboard focus (true = Delete).
     delete_focus_on_confirm: bool,
     /// The favorite highlighted for keyboard use (↑/↓ to move, Enter to open)
@@ -215,10 +223,12 @@ impl App {
             Message::Action(action) => self.handle_action(action),
             Message::ExitNow => self.exit_now(),
             Message::EscapeCaptured => {
-                // Text boxes swallow Escape; still let it close the path editor
-                // or the quick filter.
-                if !self.dialog_open()
-                    && !self.pane_mut(self.active_pane).cancel_path_edit()
+                // Text boxes swallow Escape; still let one press close the
+                // dialog they're in (e.g. Rename), the path editor or the filter.
+                if self.dialog_open() {
+                    return self.on_escape();
+                }
+                if !self.pane_mut(self.active_pane).cancel_path_edit()
                     && self.pane(self.active_pane).filter_open()
                 {
                     self.pane_mut(self.active_pane).close_filter();
@@ -241,6 +251,15 @@ impl App {
                     if let Some(task) = self.delete_dialog_key(&key) {
                         return task;
                     }
+                }
+                // Tab / Shift+Tab move focus around the text dialogs (libcosmic's
+                // own keyboard navigation is off, see `init`).
+                if key == Key::Named(Named::Tab)
+                    && (modifiers.is_empty() || modifiers == Modifiers::SHIFT)
+                    && self.text_dialog_showing()
+                {
+                    let step = if modifiers.shift() { 2 } else { 1 };
+                    return self.focus_dialog_field(self.dialog_focus + step);
                 }
                 if self.dialog_open() {
                     // A modal dialog is open; let its own controls (and `on_escape`)
@@ -493,9 +512,10 @@ impl App {
                 self.details = None;
                 Task::none()
             }
-            Message::HideHiddenFilesToggled(hide) => {
-                self.set_hide_hidden_files(hide);
-                Task::none()
+            Message::HideHiddenFilesToggled(hide) => self.set_hide_hidden_files(hide),
+            Message::ThumbnailsToggled(show) => {
+                self.settings.show_thumbnails = show;
+                self.apply_settings()
             }
             Message::LanguageSelected(index) => {
                 // Only English exists for now; the choice is saved but not applied.
@@ -508,7 +528,7 @@ impl App {
             Message::IconStyleSelected(index) => {
                 if let Some((style, _)) = ICON_STYLES.get(index) {
                     self.settings.icon_style = *style;
-                    self.apply_settings();
+                    return self.apply_settings();
                 }
                 Task::none()
             }
@@ -633,13 +653,13 @@ impl App {
                 let path = sources.pop().unwrap();
                 let name = tab_label(&path);
                 self.rename = Some(RenameState { path, name });
-                Task::none()
+                self.focus_dialog_field(0)
             }
             Action::NewFolder => {
                 self.new_folder = Some(NewFolderState {
                     name: "New folder".to_string(),
                 });
-                Task::none()
+                self.focus_dialog_field(0)
             }
             Action::NewTab => self.pane_mut(self.active_pane).update(PaneMessage::NewTab),
             Action::CloseTab => self
@@ -716,7 +736,7 @@ impl App {
                 let dir = self.pane(self.active_pane).current_dir();
                 let name = default_archive_name(&sources, &dir);
                 self.compress = Some(CompressState { sources, dir, name });
-                Task::none()
+                self.focus_dialog_field(0)
             }
             Action::ShowDetails => {
                 let paths = self.pane(self.active_pane).selected_paths();
@@ -738,8 +758,7 @@ impl App {
                 Task::none()
             }
             Action::ToggleHiddenFiles => {
-                self.set_hide_hidden_files(!self.settings.hide_hidden_files);
-                Task::none()
+                self.set_hide_hidden_files(!self.settings.hide_hidden_files)
             }
             Action::Quit => self.exit_now(),
         }
@@ -750,20 +769,24 @@ impl App {
             hide_hidden: self.settings.hide_hidden_files,
             icon_style: self.settings.icon_style,
             user_dirs: self.user_dirs.clone(),
+            show_thumbnails: self.settings.show_thumbnails,
         }
     }
 
     /// Saves the settings and re-applies them to both panes' listings.
-    fn apply_settings(&mut self) {
+    /// Saves the settings and re-applies them to both panes' listings
+    /// (returning any thumbnail loading that newly needs to start).
+    fn apply_settings(&mut self) -> Task<Message> {
         let options = self.listing_options();
-        self.left.set_options(options.clone());
-        self.right.set_options(options);
+        let left = self.left.set_options(options.clone());
+        let right = self.right.set_options(options);
         self.persist_settings();
+        Task::batch([left, right])
     }
 
-    fn set_hide_hidden_files(&mut self, hide: bool) {
+    fn set_hide_hidden_files(&mut self, hide: bool) -> Task<Message> {
         self.settings.hide_hidden_files = hide;
-        self.apply_settings();
+        self.apply_settings()
     }
 
     fn persist_settings(&self) {
@@ -857,6 +880,11 @@ impl App {
                 widget::settings::item::builder("Hide hidden files")
                     .description("Files and folders whose name starts with a dot")
                     .checkbox(self.settings.hide_hidden_files, Message::HideHiddenFilesToggled),
+            )
+            .add(
+                widget::settings::item::builder("Show thumbnails")
+                    .description("Previews of images, PDFs, videos and fonts")
+                    .checkbox(self.settings.show_thumbnails, Message::ThumbnailsToggled),
             )
             .add(widget::settings::item(
                 "Language",
@@ -972,6 +1000,27 @@ impl App {
         self.spawn_operation(OpKind::Move, |cancel, conflict| {
             fs_ops::ops::move_paths(sources, dest, cancel, conflict)
         })
+    }
+
+    /// Whether a dialog with a text field (Rename, New Folder, Compress) is
+    /// the one showing.
+    fn text_dialog_showing(&self) -> bool {
+        self.pending_conflict.is_none()
+            && (self.rename.is_some() || self.new_folder.is_some() || self.compress.is_some())
+    }
+
+    /// Focuses the text dialog's text field (0, with its text selected),
+    /// confirm button (1) or Cancel (2).
+    fn focus_dialog_field(&mut self, index: usize) -> Task<Message> {
+        self.dialog_focus = index % 3;
+        match self.dialog_focus {
+            0 => Task::batch([
+                widget::text_input::focus(self.dialog_input.clone()),
+                widget::text_input::select_all(self.dialog_input.clone()),
+            ]),
+            1 => widget::button::focus(self.dialog_confirm.clone()),
+            _ => widget::button::focus(self.dialog_cancel.clone()),
+        }
     }
 
     /// Moves keyboard focus to the Delete dialog's Delete (`true`) or Cancel button.
@@ -1090,6 +1139,7 @@ impl Application for App {
             hide_hidden: settings.hide_hidden_files,
             icon_style: settings.icon_style,
             user_dirs: user_dirs.clone(),
+            show_thumbnails: settings.show_thumbnails,
         };
         // Reopen the panes as they were when the app was last used.
         let session = fs_ops::session::load();
@@ -1118,6 +1168,10 @@ impl Application for App {
             favorite_cursor: None,
             confirm_delete_button: widget::Id::unique(),
             cancel_delete_button: widget::Id::unique(),
+            dialog_input: widget::Id::unique(),
+            dialog_confirm: widget::Id::unique(),
+            dialog_cancel: widget::Id::unique(),
+            dialog_focus: 0,
             delete_focus_on_confirm: true,
             clipboard: None,
             compress: None,
@@ -1259,14 +1313,19 @@ impl Application for App {
                     .body(body)
                     .control(
                         widget::text_input("Archive name", compress.name.as_str())
+                            .id(self.dialog_input.clone())
                             .on_input(Message::CompressNameChanged)
                             .on_submit(|_| Message::ConfirmCompress),
                     )
                     .primary_action(
-                        widget::button::suggested("Compress").on_press(Message::ConfirmCompress),
+                        widget::button::suggested("Compress")
+                            .id(self.dialog_confirm.clone())
+                            .on_press(Message::ConfirmCompress),
                     )
                     .secondary_action(
-                        widget::button::standard("Cancel").on_press(Message::CancelCompress),
+                        widget::button::standard("Cancel")
+                            .id(self.dialog_cancel.clone())
+                            .on_press(Message::CancelCompress),
                     )
                     .into(),
             );
@@ -1286,13 +1345,19 @@ impl Application for App {
                     .title("New Folder")
                     .control(
                         widget::text_input("Folder name", new_folder.name.as_str())
-                            .on_input(Message::NewFolderInputChanged),
+                            .id(self.dialog_input.clone())
+                            .on_input(Message::NewFolderInputChanged)
+                            .on_submit(|_| Message::ConfirmNewFolder),
                     )
                     .primary_action(
-                        widget::button::suggested("Create").on_press(Message::ConfirmNewFolder),
+                        widget::button::suggested("Create")
+                            .id(self.dialog_confirm.clone())
+                            .on_press(Message::ConfirmNewFolder),
                     )
                     .secondary_action(
-                        widget::button::standard("Cancel").on_press(Message::CancelNewFolder),
+                        widget::button::standard("Cancel")
+                            .id(self.dialog_cancel.clone())
+                            .on_press(Message::CancelNewFolder),
                     )
                     .into(),
             );
@@ -1305,10 +1370,20 @@ impl Application for App {
                     .body(format!("Renaming \"{}\"", tab_label(&rename.path)))
                     .control(
                         widget::text_input("New name", rename.name.as_str())
-                            .on_input(Message::RenameInputChanged),
+                            .id(self.dialog_input.clone())
+                            .on_input(Message::RenameInputChanged)
+                            .on_submit(|_| Message::ConfirmRename),
                     )
-                    .primary_action(widget::button::suggested("Rename").on_press(Message::ConfirmRename))
-                    .secondary_action(widget::button::standard("Cancel").on_press(Message::CancelRename))
+                    .primary_action(
+                        widget::button::suggested("Rename")
+                            .id(self.dialog_confirm.clone())
+                            .on_press(Message::ConfirmRename),
+                    )
+                    .secondary_action(
+                        widget::button::standard("Cancel")
+                            .id(self.dialog_cancel.clone())
+                            .on_press(Message::CancelRename),
+                    )
                     .into(),
             );
         }

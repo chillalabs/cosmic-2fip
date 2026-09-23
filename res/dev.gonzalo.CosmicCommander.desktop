@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Cosmic Commander
+GenericName=File Manager
+Comment=Dual-pane file manager in the style of Total Commander
+Exec=cosmic-commander
+Icon=dev.gonzalo.CosmicCommander
+Terminal=false
+StartupNotify=true
+StartupWMClass=dev.gonzalo.CosmicCommander
+Categories=System;FileTools;FileManager;
+Keywords=files;folders;file manager;commander;dual pane;

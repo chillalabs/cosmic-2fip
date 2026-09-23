@@ -13,6 +13,8 @@ pub struct Settings {
     /// UI language code. Only `"en"` exists for now; not applied anywhere yet.
     pub language: String,
     pub icon_style: IconStyle,
+    /// Show previews of images, PDFs, videos, ... instead of type icons.
+    pub show_thumbnails: bool,
 }
 
 /// How a pane lays out its files (saved per pane in the session).
@@ -43,6 +45,7 @@ impl Default for Settings {
             hide_hidden_files: true,
             language: "en".to_string(),
             icon_style: IconStyle::default(),
+            show_thumbnails: true,
         }
     }
 }
@@ -117,6 +120,7 @@ mod tests {
             hide_hidden_files: false,
             language: "en".to_string(),
             icon_style: IconStyle::Monochrome,
+            show_thumbnails: false,
         };
 
         save_to(&path, &settings).unwrap();

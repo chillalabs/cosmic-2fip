@@ -7,6 +7,7 @@ pub mod mime;
 pub mod ops;
 pub mod session;
 pub mod settings;
+pub mod thumbnail;
 pub mod user_dirs;
 
 pub use entry::{DirEntry, EntryKind};

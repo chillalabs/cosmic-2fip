@@ -22,3 +22,33 @@ lint:
 
 fmt:
     cargo fmt --all
+
+# Build an optimized binary (target/release/cosmic-commander).
+release:
+    cargo build --release -p cosmic-commander
+
+# Install for the current user (~/.local): binary, launcher entry and icon.
+install: release
+    SOURCE_BIN=target/release/cosmic-commander \
+    SOURCE_DESKTOP=res/dev.gonzalo.CosmicCommander.desktop \
+    SOURCE_ICON=res/icons/hicolor/scalable/apps/dev.gonzalo.CosmicCommander.svg \
+    res/install.sh
+
+uninstall:
+    res/install.sh --uninstall
+
+# Package for another computer as dist/*.tar.gz (unpack there, run ./install.sh).
+package: release
+    #!/bin/sh
+    set -eu
+    version=$(cargo pkgid -p cosmic-commander | sed 's/.*[#@]//')
+    name="cosmic-commander-$version-$(uname -m)"
+    stage="dist/$name"
+    rm -rf "$stage"
+    install -Dm755 target/release/cosmic-commander "$stage/bin/cosmic-commander"
+    install -Dm644 res/dev.gonzalo.CosmicCommander.desktop "$stage/share/applications/dev.gonzalo.CosmicCommander.desktop"
+    install -Dm644 res/icons/hicolor/scalable/apps/dev.gonzalo.CosmicCommander.svg "$stage/share/icons/hicolor/scalable/apps/dev.gonzalo.CosmicCommander.svg"
+    install -Dm755 res/install.sh "$stage/install.sh"
+    tar -C dist -czf "dist/$name.tar.gz" "$name"
+    rm -rf "$stage"
+    echo "Created dist/$name.tar.gz"

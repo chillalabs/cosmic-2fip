@@ -292,6 +292,7 @@ mod tests {
             hide_hidden: false,
             icon_style: IconStyle::Colorful,
             user_dirs: Arc::new(HashMap::new()),
+            show_thumbnails: false,
         }
     }
 
@@ -354,6 +355,7 @@ mod tests {
             hide_hidden: false,
             icon_style: IconStyle::Colorful,
             user_dirs: Arc::new(HashMap::new()),
+            show_thumbnails: false,
         };
         let entries = names
             .iter()
@@ -434,6 +436,7 @@ mod tests {
             hide_hidden: false,
             icon_style: IconStyle::Colorful,
             user_dirs: Arc::new(HashMap::new()),
+            show_thumbnails: false,
         });
         let mut names: Vec<String> = tab
             .entries

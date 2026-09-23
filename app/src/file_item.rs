@@ -17,6 +17,8 @@ pub struct ListingOptions {
     pub icon_style: IconStyle,
     /// Well-known folders (Documents, Downloads, ...) that get their own icon.
     pub user_dirs: Arc<HashMap<PathBuf, UserDir>>,
+    /// Show content previews (images, PDFs, videos, ...) instead of icons.
+    pub show_thumbnails: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,7 +55,9 @@ pub struct FileItem {
     name: String,
     size: u64,
     modified: Option<SystemTime>,
-    icon: &'static str,
+    /// MIME type guessed from the extension (files only), e.g. `image/png`.
+    mime: Option<String>,
+    icon: icon::Handle,
 }
 
 impl FileItem {
@@ -69,16 +73,29 @@ impl FileItem {
         &self.name
     }
 
-    /// The themed icon name picked for this entry (see `ListingOptions`).
-    pub fn icon_name(&self) -> &'static str {
-        self.icon
+    /// The themed icon for this entry's folder kind or file type.
+    pub fn icon(&self) -> &icon::Handle {
+        &self.icon
+    }
+
+    pub fn mime(&self) -> Option<&str> {
+        self.mime.as_deref()
+    }
+
+    pub fn modified(&self) -> Option<SystemTime> {
+        self.modified
     }
 }
 
 impl FileItem {
     pub fn new(entry: DirEntry, options: &ListingOptions) -> Self {
+        let mime = match entry.kind {
+            EntryKind::File => fs_ops::thumbnail::guess_mime(&entry.path),
+            _ => None,
+        };
         Self {
-            icon: icon_name(entry.kind, &entry.path, options),
+            icon: icon_handle(entry.kind, &entry.path, mime.as_deref(), options),
+            mime,
             path: entry.path,
             kind: entry.kind,
             name: entry.name,
@@ -88,8 +105,44 @@ impl FileItem {
     }
 }
 
-/// Picks the themed icon for an entry: special icons for the user's
-/// well-known folders, in the colorful or monochrome (`-symbolic`) variant.
+/// The themed icon for an entry: its file type's icon (e.g. `application-pdf`,
+/// falling back to the type family like `image-x-generic`), or the special
+/// icon of a well-known folder; colorful or monochrome (`-symbolic`).
+fn icon_handle(
+    kind: EntryKind,
+    path: &Path,
+    mime: Option<&str>,
+    options: &ListingOptions,
+) -> icon::Handle {
+    let suffix = match options.icon_style {
+        IconStyle::Colorful => "",
+        IconStyle::Monochrome => "-symbolic",
+    };
+    if let (EntryKind::File, Some(mime)) = (kind, mime) {
+        // Icon themes name type icons after the MIME type, '/' -> '-'.
+        let specific = format!("{}{suffix}", mime.replace('/', "-"));
+        let family = match mime.split('/').next().unwrap_or_default() {
+            "image" => "image-x-generic",
+            "audio" => "audio-x-generic",
+            "video" => "video-x-generic",
+            "font" => "font-x-generic",
+            "text" => "text-x-generic",
+            _ => "application-x-generic",
+        };
+        let fallbacks = [family, "text-x-generic"]
+            .into_iter()
+            .map(|name| format!("{name}{suffix}").into())
+            .collect();
+        return icon::from_name(specific)
+            .fallback(Some(icon::IconFallback::Names(fallbacks)))
+            .handle();
+    }
+    icon::from_name(icon_name(kind, path, options)).handle()
+}
+
+/// Picks the themed icon for an entry without a known file type: special
+/// icons for the user's well-known folders, in the colorful or monochrome
+/// (`-symbolic`) variant.
 fn icon_name(kind: EntryKind, path: &Path, options: &ListingOptions) -> &'static str {
     let (colorful, monochrome) = match kind {
         EntryKind::Dir => match options.user_dirs.get(path) {
@@ -122,7 +175,7 @@ impl table::ItemInterface<Column> for FileItem {
         if category != Column::Name {
             return None;
         }
-        Some(icon::from_name(self.icon).icon())
+        Some(icon::icon(self.icon.clone()))
     }
 
     fn get_text(&self, category: Column) -> Cow<'static, str> {

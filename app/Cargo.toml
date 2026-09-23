@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 fs-ops = { path = "../core" }
 libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["wgpu", "tokio", "single-instance", "desktop"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-stream = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 shlex = "1.3"
