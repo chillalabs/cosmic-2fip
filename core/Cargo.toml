@@ -2,6 +2,8 @@
 name = "fs-ops"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "macros", "sync"] }
