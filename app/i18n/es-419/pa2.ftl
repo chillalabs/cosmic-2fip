@@ -1,4 +1,4 @@
-# Cosmic Commander — Español (Latinoamérica)
+# pa2 — Español (Latinoamérica)
 # Traducción completa. El español de España (i18n/es) solo redefine las
 # claves que cambian; el resto se toma de este archivo.
 

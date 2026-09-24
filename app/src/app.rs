@@ -1234,7 +1234,7 @@ impl Application for App {
     type Executor = cosmic::executor::Default;
     type Flags = ();
     type Message = Message;
-    const APP_ID: &'static str = "dev.gonzalo.CosmicCommander";
+    const APP_ID: &'static str = "io.github.gonzaloism.pa2";
 
     fn core(&self) -> &Core {
         &self.core
@@ -1250,6 +1250,9 @@ impl Application for App {
         // swallows later Tabs). Turn it off; Escape is handled in `Message::Key`.
         core.set_keyboard_nav(false);
         let home = home_dir();
+        // Settings saved under the app's old name (Cosmic Commander) move to
+        // ~/.config/pa2 the first time pa2 starts.
+        fs_ops::settings::migrate_legacy_config();
         let settings = fs_ops::settings::load();
         // Before anything is drawn: every text is looked up in this language.
         localize::set_language(&settings.language);

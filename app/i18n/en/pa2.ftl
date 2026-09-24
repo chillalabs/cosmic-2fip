@@ -1,4 +1,4 @@
-# Cosmic Commander — English (base language; every key must exist here)
+# pa2 — English (base language; every key must exist here)
 
 ## Menu bar
 menu-file = File

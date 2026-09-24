@@ -1,4 +1,4 @@
-# Cosmic Commander — Español (España)
+# pa2 — Español (España)
 # Solo las claves que difieren del español de Latinoamérica (i18n/es-419);
 # todo lo demás se toma de ese archivo.
 

@@ -79,7 +79,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_dir_errors() {
-        let missing = std::path::PathBuf::from("/nonexistent/cosmic-commander-test-path");
+        let missing = std::path::PathBuf::from("/nonexistent/pa2-test-path");
         assert!(list_dir(&missing).await.is_err());
     }
 

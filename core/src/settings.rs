@@ -116,15 +116,43 @@ fn settings_path() -> PathBuf {
     config_dir().join("settings.json")
 }
 
-/// `$XDG_CONFIG_HOME/cosmic-commander`, or `~/.config/cosmic-commander`.
+/// The app's config folder name under `~/.config`.
+const APP_DIR: &str = "pa2";
+/// The folder the app used before it was renamed to pa2.
+const LEGACY_APP_DIR: &str = "cosmic-commander";
+
+/// `$XDG_CONFIG_HOME/pa2`, or `~/.config/pa2`.
 pub(crate) fn config_dir() -> PathBuf {
+    config_base().join(APP_DIR)
+}
+
+/// `$XDG_CONFIG_HOME`, or `~/.config`.
+fn config_base() -> PathBuf {
     if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(xdg).join("cosmic-commander");
+        return PathBuf::from(xdg);
     }
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"));
-    home.join(".config").join("cosmic-commander")
+    home.join(".config")
+}
+
+/// Moves the settings, favorites and session saved under the app's old name
+/// (`~/.config/cosmic-commander`) to its current folder, once: only if the
+/// old folder exists and the new one doesn't. Call before loading anything.
+pub fn migrate_legacy_config() {
+    if let Err(err) = migrate_in(&config_base()) {
+        eprintln!("failed to move the old settings folder: {err}");
+    }
+}
+
+fn migrate_in(base: &Path) -> std::io::Result<()> {
+    let old = base.join(LEGACY_APP_DIR);
+    let new = base.join(APP_DIR);
+    if old.is_dir() && !new.exists() {
+        fs::rename(old, new)?;
+    }
+    Ok(())
 }
 
 /// Whether `name` is a hidden file by Unix convention.
@@ -183,6 +211,25 @@ mod tests {
         assert_eq!(FontSize::Default.px(), 14);
         let sizes = [FontSize::Default, FontSize::Small, FontSize::Smaller, FontSize::Tiny];
         assert!(sizes.windows(2).all(|pair| pair[0].px() > pair[1].px()));
+    }
+
+    #[test]
+    fn moves_the_old_config_folder_once() {
+        let base = tempfile::tempdir().unwrap();
+        let old = base.path().join(LEGACY_APP_DIR);
+        fs::create_dir(&old).unwrap();
+        fs::write(old.join("favorites.json"), b"[]").unwrap();
+
+        migrate_in(base.path()).unwrap();
+        let new = base.path().join(APP_DIR);
+        assert!(new.join("favorites.json").exists());
+        assert!(!old.exists());
+
+        // An existing new folder is never overwritten by a stale old one.
+        fs::create_dir(&old).unwrap();
+        fs::write(old.join("favorites.json"), b"stale").unwrap();
+        migrate_in(base.path()).unwrap();
+        assert_eq!(fs::read(new.join("favorites.json")).unwrap(), b"[]");
     }
 
     #[test]

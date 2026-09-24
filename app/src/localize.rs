@@ -124,7 +124,7 @@ mod tests {
 
     /// Message IDs defined in one embedded `.ftl` file.
     fn keys(language: &str) -> std::collections::BTreeSet<String> {
-        let file = Localizations::get(&format!("{language}/cosmic-commander.ftl"))
+        let file = Localizations::get(&format!("{language}/pa2.ftl"))
             .expect("translation file is embedded");
         std::str::from_utf8(&file.data)
             .unwrap()

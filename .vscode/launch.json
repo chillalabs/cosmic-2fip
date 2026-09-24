@@ -4,11 +4,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug cosmic-commander",
+            "name": "Debug pa2",
             "cargo": {
-                "args": ["build", "--bin=cosmic-commander", "-p=cosmic-commander"],
+                "args": ["build", "--bin=pa2", "-p=pa2"],
                 "filter": {
-                    "name": "cosmic-commander",
+                    "name": "pa2",
                     "kind": "bin"
                 }
             },

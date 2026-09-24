@@ -127,8 +127,8 @@ fn generate(path: &Path, mime: &str, uri: &str, mtime: u64, target: &Path) -> bo
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     );
-    let raw = PathBuf::from(format!("/tmp/.gnome_desktop_thumbnail.cosmic-commander-{unique}.png"));
-    let tagged = dir.join(format!(".cosmic-commander-{unique}.png"));
+    let raw = PathBuf::from(format!("/tmp/.gnome_desktop_thumbnail.pa2-{unique}.png"));
+    let tagged = dir.join(format!(".pa2-{unique}.png"));
 
     let ok = run_thumbnailer(exec, path, uri, &raw)
         && add_thumbnail_tags(&raw, &tagged, uri, mtime).is_some()
@@ -233,7 +233,7 @@ fn add_thumbnail_tags(raw: &Path, tagged: &Path, uri: &str, mtime: u64) -> Optio
         .add_text_chunk("Thumb::MTime".to_string(), mtime.to_string())
         .ok()?;
     encoder
-        .add_text_chunk("Software".to_string(), "cosmic-commander".to_string())
+        .add_text_chunk("Software".to_string(), "pa2".to_string())
         .ok()?;
     let mut writer = encoder.write_header().ok()?;
     writer.write_image_data(&pixels).ok()?;

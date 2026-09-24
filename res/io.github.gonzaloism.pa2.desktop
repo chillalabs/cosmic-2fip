@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=Cosmic Commander
+Name=pa2
 GenericName=File Manager
 Comment=Dual-pane file manager in the style of Total Commander
-Exec=cosmic-commander
-Icon=dev.gonzalo.CosmicCommander
+Exec=pa2
+Icon=io.github.gonzaloism.pa2
 Terminal=false
 StartupNotify=true
-StartupWMClass=dev.gonzalo.CosmicCommander
+StartupWMClass=io.github.gonzaloism.pa2
 Categories=System;FileTools;FileManager;
-Keywords=files;folders;file manager;commander;dual pane;
+Keywords=files;folders;file manager;commander;dual pane;pa2;
