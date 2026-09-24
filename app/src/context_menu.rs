@@ -5,6 +5,7 @@ use cosmic::widget::menu::key_bind::KeyBind;
 use cosmic::widget::menu::{self, Item as MenuItem};
 
 use crate::file_item::FileItem;
+use crate::fl;
 use crate::keybinds::Action;
 use crate::pane::PaneMessage;
 
@@ -16,41 +17,47 @@ pub fn item_menu(
     item: &FileItem,
     can_paste: bool,
 ) -> Option<Vec<menu::Tree<PaneMessage>>> {
-    let button = |label: &'static str, icon_name: &'static str, action: Action| {
+    let button = |label: String, icon_name: &'static str, action: Action| {
         MenuItem::Button(label, Some(icon::from_name(icon_name).handle()), action)
     };
 
-    let mut items = vec![button("Open", "document-open-symbolic", Action::Open)];
+    let mut items = vec![button(fl!("open"), "document-open-symbolic", Action::Open)];
     if !item.is_dir() {
         items.push(button(
-            "Open With…",
+            fl!("open-with-ellipsis"),
             "system-run-symbolic",
             Action::OpenWith,
         ));
-        items.push(button("View", "document-viewer-symbolic", Action::View));
-        items.push(button("Edit", "accessories-text-editor-symbolic", Action::Edit));
+        items.push(button(fl!("view"), "document-viewer-symbolic", Action::View));
+        items.push(button(fl!("edit"), "accessories-text-editor-symbolic", Action::Edit));
+    } else {
+        items.push(button(
+            fl!("calculate-size"),
+            "disk-usage-analyzer-symbolic",
+            Action::CalculateSize,
+        ));
     }
     items.extend([
         MenuItem::Divider,
-        button("Cut", "edit-cut-symbolic", Action::Cut),
-        button("Copy", "edit-copy-symbolic", Action::CopyToClipboard),
+        button(fl!("cut"), "edit-cut-symbolic", Action::Cut),
+        button(fl!("copy"), "edit-copy-symbolic", Action::CopyToClipboard),
         if can_paste {
-            button("Paste", "edit-paste-symbolic", Action::Paste)
+            button(fl!("paste"), "edit-paste-symbolic", Action::Paste)
         } else {
             MenuItem::ButtonDisabled(
-                "Paste",
+                fl!("paste"),
                 Some(icon::from_name("edit-paste-symbolic").handle()),
                 Action::Paste,
             )
         },
         MenuItem::Divider,
-        button("Rename…", "edit-symbolic", Action::Rename),
-        button("Compress…", "package-x-generic-symbolic", Action::Compress),
+        button(fl!("rename-ellipsis"), "edit-symbolic", Action::Rename),
+        button(fl!("compress-ellipsis"), "package-x-generic-symbolic", Action::Compress),
         MenuItem::Divider,
-        button("Delete", "user-trash-symbolic", Action::Delete),
+        button(fl!("delete"), "user-trash-symbolic", Action::Delete),
         MenuItem::Divider,
         button(
-            "Show Details",
+            fl!("show-details"),
             "document-properties-symbolic",
             Action::ShowDetails,
         ),

@@ -3,6 +3,7 @@ mod context_menu;
 mod file_item;
 mod keybinds;
 mod launch;
+mod localize;
 mod menu_bar;
 mod operation;
 mod pane;

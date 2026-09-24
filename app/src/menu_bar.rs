@@ -9,6 +9,7 @@ use cosmic::Element;
 use fs_ops::settings::ViewMode;
 
 use crate::app::Message;
+use crate::fl;
 use crate::keybinds::Action;
 
 /// An [`Action`] fired from the top menu bar. `Action`'s own [`MenuAction`]
@@ -37,44 +38,44 @@ pub fn menu_bar<'a>(
         .map(|(bind, action)| (bind.clone(), TopMenuAction(*action)))
         .collect();
 
-    let button = |label: &'static str, icon_name: &'static str, action: Action| {
+    let button = |label: String, icon_name: &'static str, action: Action| {
         MenuItem::Button(
             label,
             Some(icon::from_name(icon_name).handle()),
             TopMenuAction(action),
         )
     };
-    let root = |label: &'static str| RcElementWrapper::new(Element::from(menu::root(label)));
+    let root = |label: String| RcElementWrapper::new(Element::from(menu::root(label)));
 
     let file = vec![
-        button("New Tab", "tab-new-symbolic", Action::NewTab),
-        button("New Folder", "folder-new-symbolic", Action::NewFolder),
+        button(fl!("new-tab"), "tab-new-symbolic", Action::NewTab),
+        button(fl!("new-folder"), "folder-new-symbolic", Action::NewFolder),
         MenuItem::Divider,
-        button("Close Tab", "window-close-symbolic", Action::CloseTab),
-        button("Quit", "application-exit-symbolic", Action::Quit),
+        button(fl!("close-tab"), "window-close-symbolic", Action::CloseTab),
+        button(fl!("quit"), "application-exit-symbolic", Action::Quit),
     ];
 
     let paste = if can_paste {
-        button("Paste", "edit-paste-symbolic", Action::Paste)
+        button(fl!("paste"), "edit-paste-symbolic", Action::Paste)
     } else {
         MenuItem::ButtonDisabled(
-            "Paste",
+            fl!("paste"),
             Some(icon::from_name("edit-paste-symbolic").handle()),
             TopMenuAction(Action::Paste),
         )
     };
     let edit = vec![
-        button("Cut", "edit-cut-symbolic", Action::Cut),
-        button("Copy", "edit-copy-symbolic", Action::CopyToClipboard),
+        button(fl!("cut"), "edit-cut-symbolic", Action::Cut),
+        button(fl!("copy"), "edit-copy-symbolic", Action::CopyToClipboard),
         paste,
         MenuItem::Divider,
-        button("Select All", "edit-select-all-symbolic", Action::SelectAll),
+        button(fl!("select-all"), "edit-select-all-symbolic", Action::SelectAll),
         MenuItem::Divider,
-        button("Rename…", "edit-symbolic", Action::Rename),
-        button("Delete", "user-trash-symbolic", Action::Delete),
+        button(fl!("rename-ellipsis"), "edit-symbolic", Action::Rename),
+        button(fl!("delete"), "user-trash-symbolic", Action::Delete),
     ];
 
-    let check = |label: &'static str, icon_name: &'static str, checked: bool, action: Action| {
+    let check = |label: String, icon_name: &'static str, checked: bool, action: Action| {
         MenuItem::CheckBox(
             label,
             Some(icon::from_name(icon_name).handle()),
@@ -84,27 +85,27 @@ pub fn menu_bar<'a>(
     };
     let view = vec![
         check(
-            "List View",
+            fl!("list-view"),
             "view-list-symbolic",
             view_mode == ViewMode::List,
             Action::ListView,
         ),
         check(
-            "Grid View",
+            fl!("grid-view"),
             "view-grid-symbolic",
             view_mode == ViewMode::Grid,
             Action::GridView,
         ),
         MenuItem::Divider,
-        button("Favorites", "starred-symbolic", Action::Favorites),
+        button(fl!("favorites"), "starred-symbolic", Action::Favorites),
         MenuItem::Divider,
-        button("Settings", "preferences-system-symbolic", Action::Settings),
+        button(fl!("settings"), "preferences-system-symbolic", Action::Settings),
     ];
 
     menu::bar(vec![
-        menu::Tree::with_children(root("File"), menu::items(&keybinds, file)),
-        menu::Tree::with_children(root("Edit"), menu::items(&keybinds, edit)),
-        menu::Tree::with_children(root("View"), menu::items(&keybinds, view)),
+        menu::Tree::with_children(root(fl!("menu-file")), menu::items(&keybinds, file)),
+        menu::Tree::with_children(root(fl!("menu-edit")), menu::items(&keybinds, edit)),
+        menu::Tree::with_children(root(fl!("menu-view")), menu::items(&keybinds, view)),
     ])
     .item_height(ItemHeight::Dynamic(40))
     .item_width(ItemWidth::Uniform(260))

@@ -10,11 +10,12 @@ use cosmic::Element;
 
 use crate::app::{Message, PaneId};
 use crate::context_menu::item_menu;
-use fs_ops::settings::ViewMode;
+use fs_ops::settings::{FontSize, ViewMode};
 use crate::file_item::{format_size, Column, FileItem, ListingOptions};
+use crate::fl;
 use crate::keybinds::Action;
 use crate::launch::open_with_default_app;
-use crate::tab::{tab_label, PendingSelect, TabState};
+use crate::tab::{tab_label, DirSize, PendingSelect, TabState};
 
 pub type TabId = segmented_button::Entity;
 
@@ -59,6 +60,10 @@ pub enum PaneMessage {
     EntrySelected(table::Entity, SelectMode),
     /// Shift+↓ (`true`) / Shift+↑: extends the selection by one row.
     ExtendSelection(bool),
+    /// Space: work out the total size of the selected folders.
+    CalculateDirSizes,
+    /// A folder's size finished calculating (`None`: it couldn't be read).
+    DirSizeReady(TabId, PathBuf, Option<u64>),
     /// Home / End (`last`): jump to the first / last row; `extend` when Shift
     /// is held (select from the anchor to there).
     SelectEdge { last: bool, extend: bool },
@@ -234,6 +239,54 @@ impl PaneState {
                         SelectMode::Replace => tab_state.select_only(entity),
                         SelectMode::Toggle => tab_state.toggle(entity),
                         SelectMode::Range => tab_state.select_range_to(entity),
+                    }
+                }
+                Task::none()
+            }
+            PaneMessage::CalculateDirSizes => {
+                let tab = self.tabs.active();
+                let Some(tab_state) = self.tabs.data_mut::<TabState>(tab) else {
+                    return Task::none();
+                };
+                let folders: Vec<PathBuf> = tab_state
+                    .entries
+                    .active()
+                    .filter_map(|entity| tab_state.entries.item(entity))
+                    .filter(|item| item.is_dir())
+                    .map(|item| item.path.clone())
+                    // Space again on a finished folder recalculates it.
+                    .filter(|path| tab_state.dir_sizes.get(path) != Some(&DirSize::Calculating))
+                    .collect();
+                let pane = self.id;
+                let tasks: Vec<_> = folders
+                    .into_iter()
+                    .map(|path| {
+                        tab_state.dir_sizes.insert(path.clone(), DirSize::Calculating);
+                        cosmic::task::future(async move {
+                            let size = fs_ops::details::details(vec![path.clone()])
+                                .await
+                                .ok()
+                                .map(|details| details.total_size);
+                            Message::Pane(pane, PaneMessage::DirSizeReady(tab, path, size))
+                        })
+                    })
+                    .collect();
+                Task::batch(tasks)
+            }
+            PaneMessage::DirSizeReady(tab, path, size) => {
+                if let Some(tab_state) = self.tabs.data_mut::<TabState>(tab) {
+                    // Ignore results for a folder the tab has since left.
+                    if let std::collections::hash_map::Entry::Occupied(mut entry) =
+                        tab_state.dir_sizes.entry(path)
+                    {
+                        match size {
+                            Some(bytes) => {
+                                entry.insert(DirSize::Done(bytes));
+                            }
+                            None => {
+                                entry.remove();
+                            }
+                        }
                     }
                 }
                 Task::none()
@@ -450,7 +503,8 @@ impl PaneState {
                     }
                     self.navigate_active(parent)
                 } else {
-                    self.path_edit_error = Some(format!("Not found: {}", path.display()));
+                    self.path_edit_error =
+                        Some(fl!("path-not-found", path = path.display().to_string()));
                     Task::none()
                 }
             }
@@ -477,8 +531,10 @@ impl PaneState {
         if let Some(tab_state) = self.tabs.data_mut::<TabState>(tab_id) {
             tab_state.current_dir = path.clone();
             tab_state.error = None;
-            // A quick filter belongs to the folder it was typed in.
+            // A quick filter and folder sizes belong to the folder they were
+            // made in.
             tab_state.filter = None;
+            tab_state.dir_sizes.clear();
         }
         let _ = self.tabs.text_set(tab_id, tab_label(&path));
         load_dir(self.id, tab_id, path)
@@ -567,6 +623,7 @@ impl PaneState {
         let mut tasks = Vec::new();
         for tab in tabs {
             if let Some(tab_state) = self.tabs.data_mut::<TabState>(tab) {
+                tab_state.ensure_visible_sort(self.options.separate_extension);
                 tab_state.rebuild(&self.options);
             }
             // e.g. thumbnails were just switched on
@@ -675,24 +732,23 @@ impl PaneState {
         let total_items = tab_state.entries.iter().count();
         let selected: Vec<_> = tab_state.entries.active().collect();
         if selected.is_empty() {
-            let filtered = match tab_state.filter.as_deref() {
-                Some(filter) if !filter.trim().is_empty() => " match the filter",
-                _ => "",
-            };
-            format!(
-                "{total_items} item{}{filtered}",
-                if total_items == 1 { "" } else { "s" }
-            )
+            match tab_state.filter.as_deref() {
+                Some(filter) if !filter.trim().is_empty() => {
+                    fl!("status-items-filtered", count = total_items)
+                }
+                _ => fl!("status-items", count = total_items),
+            }
         } else {
             let selected_size: u64 = selected
                 .iter()
                 .filter_map(|&entity| tab_state.entries.item(entity))
-                .map(|item| item.size())
+                .map(|item| tab_state.item_size(item))
                 .sum();
-            format!(
-                "{} of {total_items} selected ({})",
-                selected.len(),
-                format_size(selected_size)
+            fl!(
+                "status-selected",
+                selected = selected.len(),
+                total = total_items,
+                size = format_size(selected_size)
             )
         }
     }
@@ -721,7 +777,7 @@ impl PaneState {
             .on_activate(PaneMessage::SelectTab)
             .on_close(PaneMessage::CloseTab);
 
-        let nav_button = |icon: widget::icon::Handle, tooltip: &'static str, message| {
+        let nav_button = |icon: widget::icon::Handle, tooltip: String, message| {
             widget::button::icon(icon)
                 .tooltip(tooltip)
                 .on_press(message)
@@ -731,37 +787,37 @@ impl PaneState {
             .align_y(cosmic::iced::Alignment::Center)
             .push(nav_button(
                 widget::icon::from_name("go-previous-symbolic").handle(),
-                "Back (Alt+←)",
+                fl!("tooltip-back"),
                 PaneMessage::GoBack,
             ))
             .push(nav_button(
                 widget::icon::from_name("go-next-symbolic").handle(),
-                "Forward (Alt+→)",
+                fl!("tooltip-forward"),
                 PaneMessage::GoForward,
             ))
             .push(
                 // Arrow + "[..]", like Total Commander's parent-folder entry.
                 widget::button::text("[..]")
                     .leading_icon(parent_folder_icon())
-                    .tooltip("Up one folder (Backspace)")
+                    .tooltip(fl!("tooltip-up"))
                     .on_press(PaneMessage::GoUp),
             )
             .push(nav_button(
                 widget::icon::from_name("list-add-symbolic").handle(),
-                "New tab (Ctrl+T)",
+                fl!("tooltip-new-tab"),
                 PaneMessage::NewTab,
             ))
             .push(self.path_bar(tab_state, is_active));
 
         let content: Element<'_, PaneMessage> = match tab_state {
-            None => widget::text("No tab open").into(),
+            None => widget::text(fl!("no-tab-open")).into(),
             Some(t) => {
                 if let Some(err) = &t.error {
                     widget::text(err.clone()).into()
                 } else {
                     match t.view_mode {
                         ViewMode::List => widget::Column::new()
-                            .push(list_header(t))
+                            .push(list_header(t, self.options.separate_extension))
                             .push(widget::divider::horizontal::default())
                             .push(
                                 widget::scrollable(list_view(
@@ -805,7 +861,7 @@ impl PaneState {
             .push(header)
             .push(content)
             .push_maybe(tab_state.and_then(|t| t.filter.as_deref()).map(|filter| {
-                widget::search_input("Filter (e.g. report or *.txt)", filter)
+                widget::search_input(fl!("filter-placeholder"), filter)
                     .id(self.filter_input_id.clone())
                     .on_input(PaneMessage::FilterChanged)
                     // Enter opens the selected match, like Total Commander.
@@ -825,13 +881,13 @@ impl PaneState {
     /// or the pencil starts editing.
     fn path_bar<'a>(&'a self, tab_state: Option<&'a TabState>, is_active: bool) -> Element<'a, PaneMessage> {
         if let Some(text) = &self.path_edit {
-            let input = widget::text_input("Type a folder path", text.as_str())
+            let input = widget::text_input(fl!("path-placeholder"), text.as_str())
                 .id(self.path_input_id.clone())
                 .on_input(PaneMessage::PathEditChanged)
                 .on_submit(|_| PaneMessage::SubmitPathEdit)
                 .width(Length::Fill);
             let cancel = widget::button::icon(widget::icon::from_name("window-close-symbolic"))
-                .tooltip("Cancel (Esc)")
+                .tooltip(fl!("tooltip-cancel-esc"))
                 .on_press(PaneMessage::CancelPathEdit);
             return widget::Column::new()
                 .width(Length::Fill)
@@ -883,7 +939,7 @@ impl PaneState {
             .push(
                 widget::button::icon(widget::icon::from_name("pencil-symbolic"))
                     .class(path_button_class(is_active))
-                    .tooltip("Edit path (Ctrl+L)")
+                    .tooltip(fl!("tooltip-edit-path"))
                     .on_press(PaneMessage::StartPathEdit),
             );
         // Folder buttons capture their own clicks, so only clicks on the
@@ -947,9 +1003,23 @@ fn path_button_class(highlighted: bool) -> cosmic::theme::Button {
     }
 }
 
-/// The listing's columns, left to right.
-const LIST_COLUMNS: [Column; 3] = [Column::Name, Column::Size, Column::Modified];
+/// The list view's columns, left to right: with the extension in its own
+/// column (Total Commander style) or as part of the name.
+fn list_columns(separate_extension: bool) -> &'static [Column] {
+    if separate_extension {
+        &[Column::Name, Column::Ext, Column::Size, Column::Modified]
+    } else {
+        &[Column::Name, Column::Size, Column::Modified]
+    }
+}
 const LIST_ICON_SIZE: u16 = 20;
+/// Space between the list's columns (header and rows alike).
+const LIST_COLUMN_GAP: u16 = 8;
+/// Horizontal padding inside each row (and its selection highlight).
+const LIST_ROW_PADDING_X: u16 = 8;
+/// Padding libcosmic's `scrollable` adds around its content on every side;
+/// the header (outside the scroll area) adds it itself to line up.
+const LIST_SCROLL_PADDING: u16 = 8;
 
 /// Accent background for selected rows / cells (none otherwise).
 fn selection_class(selected: bool) -> cosmic::theme::Container<'static> {
@@ -972,30 +1042,57 @@ fn selection_class(selected: bool) -> cosmic::theme::Container<'static> {
 }
 
 /// One line of text, cut with "…" when it doesn't fit its column.
-fn one_line(text: String) -> widget::Text<'static, cosmic::Theme> {
+fn one_line(text: String, font_size: FontSize) -> widget::Text<'static, cosmic::Theme> {
     use cosmic::iced::core::text::{Ellipsize, EllipsizeHeightLimit, Wrapping};
-    widget::text::body(text)
+    name_text(text, font_size)
         .width(Length::Fill)
         .wrapping(Wrapping::WordOrGlyph)
         .ellipsize(Ellipsize::End(EllipsizeHeightLimit::Lines(1)))
 }
 
+/// Listing text at the chosen size. The line height shrinks with it (1.5×,
+/// as libcosmic's 14 px body text uses 21 px), so smaller text also means
+/// shorter rows.
+fn name_text(text: String, font_size: FontSize) -> widget::Text<'static, cosmic::Theme> {
+    use cosmic::iced::core::text::LineHeight;
+    let px = f32::from(font_size.px());
+    widget::text::body(text)
+        .size(px)
+        .line_height(LineHeight::Absolute((px * 1.5).into()))
+}
+
 /// The list view's column headers; clicking one sorts by it (again to
 /// reverse), and the sort column shows an up/down arrow.
-fn list_header(tab_state: &TabState) -> Element<'_, PaneMessage> {
+fn list_header(tab_state: &TabState, separate_extension: bool) -> Element<'_, PaneMessage> {
     let (sort_column, ascending) = tab_state.sort();
-    let mut header = widget::Row::new().padding([0, 8]);
-    for column in LIST_COLUMNS {
-        let mut button = widget::button::text(column.to_string())
-            .class(path_button_class(false))
-            .on_press(PaneMessage::SortBy(column));
+    // Same horizontal layout as the rows below, so each label sits exactly
+    // over its column: the rows are inset by the scroll area's padding plus
+    // their own, and use the same gap between columns.
+    let mut header = widget::Row::new()
+        .spacing(LIST_COLUMN_GAP)
+        .padding([0, LIST_SCROLL_PADDING + LIST_ROW_PADDING_X]);
+    for &column in list_columns(separate_extension) {
+        let mut label = widget::Row::new()
+            .spacing(4)
+            .align_y(cosmic::iced::Alignment::Center)
+            .push(widget::text::body(column.to_string()));
         if column == sort_column {
-            button = button.trailing_icon(widget::icon::from_name(if ascending {
-                "pan-up-symbolic"
-            } else {
-                "pan-down-symbolic"
-            }));
+            label = label.push(
+                widget::icon::from_name(if ascending {
+                    "pan-up-symbolic"
+                } else {
+                    "pan-down-symbolic"
+                })
+                .size(16),
+            );
         }
+        // The whole column header is the button, with no side padding, so the
+        // label starts where the column's data starts.
+        let button = widget::button::custom(label)
+            .class(path_button_class(false))
+            .padding([4, 0])
+            .width(Length::Fill)
+            .on_press(PaneMessage::SortBy(column));
         header = header.push(
             widget::container(button)
                 .width(table::ItemCategory::width(&column))
@@ -1023,10 +1120,20 @@ fn list_view<'a>(
             continue;
         };
         let mut row = widget::Row::new()
-            .spacing(8)
+            .spacing(LIST_COLUMN_GAP)
             .align_y(cosmic::iced::Alignment::Center);
-        for column in LIST_COLUMNS {
-            let text = one_line(item.get_text(column).into_owned());
+        for &column in list_columns(pane.options.separate_extension) {
+            let text = match (column, item.is_dir()) {
+                // Folders show their size once calculated (Space).
+                (Column::Size, true) => match tab_state.dir_sizes.get(&item.path) {
+                    Some(DirSize::Calculating) => "…".to_string(),
+                    Some(DirSize::Done(bytes)) => format_size(*bytes),
+                    None => String::new(),
+                },
+                (Column::Name, _) if pane.options.separate_extension => item.stem().to_string(),
+                _ => item.get_text(column).into_owned(),
+            };
+            let text = one_line(text, pane.options.font_size);
             let cell: Element<'a, PaneMessage> = if column == Column::Name {
                 widget::Row::new()
                     .spacing(8)
@@ -1044,7 +1151,7 @@ fn list_view<'a>(
             );
         }
         let row = widget::container(row)
-            .padding([4, 8])
+            .padding([4, LIST_ROW_PADDING_X])
             .width(Length::Fill)
             .class(selection_class(tab_state.entries.is_active(entity)));
         let area = widget::mouse_area(row)
@@ -1097,7 +1204,7 @@ fn grid_view<'a>(
                 // Up to 3 lines, like COSMIC Files; long words break too
                 // (with plain word wrapping a name without spaces spilled
                 // over its neighbors), and "…" ends anything longer.
-                widget::text::body(item.name().to_string())
+                name_text(item.name().to_string(), pane.options.font_size)
                     .width(Length::Fill)
                     .align_x(cosmic::iced::alignment::Horizontal::Center)
                     .wrapping(Wrapping::WordOrGlyph)

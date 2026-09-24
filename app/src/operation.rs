@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use fs_ops::ops::{CancelHandle, ConflictHandle};
 
+use crate::fl;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpKind {
     Copy,
@@ -11,12 +13,23 @@ pub enum OpKind {
 }
 
 impl OpKind {
-    pub fn label(self) -> &'static str {
+    /// "Copying", "Moving", ... in the UI language.
+    pub fn label(self) -> String {
         match self {
-            OpKind::Copy => "Copying",
-            OpKind::Move => "Moving",
-            OpKind::Delete => "Deleting",
-            OpKind::Compress => "Compressing",
+            OpKind::Copy => fl!("op-copying"),
+            OpKind::Move => fl!("op-moving"),
+            OpKind::Delete => fl!("op-deleting"),
+            OpKind::Compress => fl!("op-compressing"),
+        }
+    }
+
+    /// "Copy failed", ... in the UI language.
+    pub fn failed_label(self) -> String {
+        match self {
+            OpKind::Copy => fl!("op-copy-failed"),
+            OpKind::Move => fl!("op-move-failed"),
+            OpKind::Delete => fl!("op-delete-failed"),
+            OpKind::Compress => fl!("op-compress-failed"),
         }
     }
 }

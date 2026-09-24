@@ -17,13 +17,15 @@ use fs_ops::details::Details;
 use fs_ops::favorites::Favorite;
 use fs_ops::ops::{CancelHandle, ConflictHandle, ConflictResolution, OpEvent};
 use fs_ops::session::Session;
-use fs_ops::settings::{IconStyle, Settings, ViewMode};
+use fs_ops::settings::{FontSize, IconStyle, Settings, ViewMode};
 use fs_ops::user_dirs::UserDir;
 use fs_ops::EntryKind;
 
 use crate::file_item::{format_modified, format_size, ListingOptions};
 use crate::keybinds::{default_keybinds, Action};
 use crate::launch::{self, open_with_default_app, AppEntry, OpenMode};
+use crate::localize;
+use crate::fl;
 use crate::menu_bar::menu_bar;
 use crate::operation::{OpKind, OperationState};
 use crate::pane::{home_dir, PaneMessage, PaneState, SelectMode};
@@ -87,24 +89,47 @@ pub enum Message {
     CloseDetails,
     HideHiddenFilesToggled(bool),
     ThumbnailsToggled(bool),
-    /// Index into [`LANGUAGES`]. Stored only; not applied yet.
+    SeparateExtensionToggled(bool),
+    /// Index into [`localize::LANGUAGES`]; applied immediately.
     LanguageSelected(usize),
     /// Index into [`ICON_STYLES`].
     IconStyleSelected(usize),
+    /// Index into [`FONT_SIZES`].
+    FontSizeSelected(usize),
     CloseDrawer,
 }
 
 /// Index of "Skip" in `App::conflict_buttons`: the safe default focus.
 const CONFLICT_SKIP: usize = 2;
 
-/// Languages offered in Settings, as (code, display name).
-const LANGUAGES: [(&str, &str); 1] = [("en", "English")];
-
-/// Icon styles offered in Settings, with their display names.
-const ICON_STYLES: [(IconStyle, &str); 2] = [
-    (IconStyle::Colorful, "Colorful"),
-    (IconStyle::Monochrome, "Monochrome"),
+/// File name sizes offered in Settings, in dropdown order.
+const FONT_SIZES: [FontSize; 4] = [
+    FontSize::Default,
+    FontSize::Small,
+    FontSize::Smaller,
+    FontSize::Tiny,
 ];
+
+/// Icon styles offered in Settings, in dropdown order.
+const ICON_STYLES: [IconStyle; 2] = [IconStyle::Colorful, IconStyle::Monochrome];
+
+/// Dropdown label for a file name size, e.g. "Small (13 px)".
+fn font_size_name(size: FontSize) -> String {
+    let px = size.px();
+    match size {
+        FontSize::Default => fl!("font-size-default", px = px),
+        FontSize::Small => fl!("font-size-small", px = px),
+        FontSize::Smaller => fl!("font-size-smaller", px = px),
+        FontSize::Tiny => fl!("font-size-tiny", px = px),
+    }
+}
+
+fn icon_style_name(style: IconStyle) -> String {
+    match style {
+        IconStyle::Colorful => fl!("icon-style-colorful"),
+        IconStyle::Monochrome => fl!("icon-style-monochrome"),
+    }
+}
 
 /// What the side panel (context drawer) is showing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,9 +211,6 @@ pub struct App {
     open_with: Option<OpenWithState>,
     details: Option<DetailsState>,
     settings: Settings,
-    /// Display names from [`LANGUAGES`] and [`ICON_STYLES`], for the Settings dropdowns.
-    language_names: Vec<&'static str>,
-    icon_style_names: Vec<&'static str>,
     user_dirs: Arc<HashMap<PathBuf, UserDir>>,
     drawer: Option<DrawerPage>,
     /// The session as last written to disk, to skip saving when unchanged.
@@ -538,20 +560,33 @@ impl App {
                 Task::none()
             }
             Message::HideHiddenFilesToggled(hide) => self.set_hide_hidden_files(hide),
+            Message::SeparateExtensionToggled(separate) => {
+                self.settings.separate_extension = separate;
+                self.apply_settings()
+            }
             Message::ThumbnailsToggled(show) => {
                 self.settings.show_thumbnails = show;
                 self.apply_settings()
             }
             Message::LanguageSelected(index) => {
-                // Only English exists for now; the choice is saved but not applied.
-                if let Some((code, _)) = LANGUAGES.get(index) {
+                if let Some((code, _)) = localize::LANGUAGES.get(index) {
                     self.settings.language = code.to_string();
+                    // Every view reads its text through `fl!`, so the next
+                    // redraw is already in the new language.
+                    localize::set_language(code);
                     self.persist_settings();
                 }
                 Task::none()
             }
+            Message::FontSizeSelected(index) => {
+                if let Some(size) = FONT_SIZES.get(index) {
+                    self.settings.name_font_size = *size;
+                    return self.apply_settings();
+                }
+                Task::none()
+            }
             Message::IconStyleSelected(index) => {
-                if let Some((style, _)) = ICON_STYLES.get(index) {
+                if let Some(style) = ICON_STYLES.get(index) {
                     self.settings.icon_style = *style;
                     return self.apply_settings();
                 }
@@ -682,7 +717,7 @@ impl App {
             }
             Action::NewFolder => {
                 self.new_folder = Some(NewFolderState {
-                    name: "New folder".to_string(),
+                    name: fl!("new-folder-default-name"),
                 });
                 self.focus_dialog_field(0)
             }
@@ -694,6 +729,9 @@ impl App {
             Action::GoForward => self.pane_mut(self.active_pane).update(PaneMessage::GoForward),
             Action::GoUp => self.pane_mut(self.active_pane).update(PaneMessage::GoUp),
             Action::SelectNext => self.pane_mut(self.active_pane).update(PaneMessage::SelectNext),
+            Action::CalculateSize => self
+                .pane_mut(self.active_pane)
+                .update(PaneMessage::CalculateDirSizes),
             Action::SelectFirst
             | Action::SelectLast
             | Action::ExtendSelectionToFirst
@@ -813,6 +851,8 @@ impl App {
             icon_style: self.settings.icon_style,
             user_dirs: self.user_dirs.clone(),
             show_thumbnails: self.settings.show_thumbnails,
+            font_size: self.settings.name_font_size,
+            separate_extension: self.settings.separate_extension,
         }
     }
 
@@ -909,52 +949,80 @@ impl App {
     }
 
     fn settings_page(&self) -> Element<'_, Message> {
-        let selected_language = LANGUAGES
+        // Option names are built on every draw, so they follow the language.
+        let language_names: Vec<String> = localize::LANGUAGES
+            .iter()
+            .map(|(code, name)| match *code {
+                "system" => fl!("language-system"),
+                _ => name.to_string(),
+            })
+            .collect();
+        let selected_language = localize::LANGUAGES
             .iter()
             .position(|(code, _)| *code == self.settings.language)
             .or(Some(0));
+        let icon_style_names: Vec<String> = ICON_STYLES.into_iter().map(icon_style_name).collect();
         let selected_icon_style = ICON_STYLES
             .iter()
-            .position(|(style, _)| *style == self.settings.icon_style);
+            .position(|style| *style == self.settings.icon_style);
+        let font_size_names: Vec<String> = FONT_SIZES.into_iter().map(font_size_name).collect();
+        let selected_font_size = FONT_SIZES
+            .iter()
+            .position(|size| *size == self.settings.name_font_size);
 
         let general = widget::settings::section()
-            .title("General")
+            .title(fl!("settings-general"))
             .add(
-                widget::settings::item::builder("Hide hidden files")
-                    .description("Files and folders whose name starts with a dot")
+                widget::settings::item::builder(fl!("settings-hide-hidden"))
+                    .description(fl!("settings-hide-hidden-description"))
                     .checkbox(self.settings.hide_hidden_files, Message::HideHiddenFilesToggled),
             )
             .add(
-                widget::settings::item::builder("Show thumbnails")
-                    .description("Previews of images, PDFs, videos and fonts")
+                widget::settings::item::builder(fl!("settings-separate-ext"))
+                    .description(fl!("settings-separate-ext-description"))
+                    .checkbox(
+                        self.settings.separate_extension,
+                        Message::SeparateExtensionToggled,
+                    ),
+            )
+            .add(
+                widget::settings::item::builder(fl!("settings-thumbnails"))
+                    .description(fl!("settings-thumbnails-description"))
                     .checkbox(self.settings.show_thumbnails, Message::ThumbnailsToggled),
             )
             .add(widget::settings::item(
-                "Language",
-                widget::dropdown(
-                    self.language_names.as_slice(),
-                    selected_language,
-                    Message::LanguageSelected,
-                ),
+                fl!("settings-language"),
+                widget::dropdown(language_names, selected_language, Message::LanguageSelected),
             ));
 
-        let theme = widget::settings::section().title("Theme").add(
-            widget::settings::item::builder("Icon style")
-                .description("Colorful matches the COSMIC Files app")
-                .control(widget::dropdown(
-                    self.icon_style_names.as_slice(),
-                    selected_icon_style,
-                    Message::IconStyleSelected,
-                )),
-        );
+        let theme = widget::settings::section()
+            .title(fl!("settings-theme"))
+            .add(
+                widget::settings::item::builder(fl!("settings-icon-style"))
+                    .description(fl!("settings-icon-style-description"))
+                    .control(widget::dropdown(
+                        icon_style_names,
+                        selected_icon_style,
+                        Message::IconStyleSelected,
+                    )),
+            )
+            .add(
+                widget::settings::item::builder(fl!("settings-font-size"))
+                    .description(fl!("settings-font-size-description"))
+                    .control(widget::dropdown(
+                        font_size_names,
+                        selected_font_size,
+                        Message::FontSizeSelected,
+                    )),
+            );
 
         widget::settings::view_column(vec![general.into(), theme.into()]).into()
     }
 
     fn favorites_page(&self) -> Element<'_, Message> {
-        let mut saved = widget::settings::section().title("Saved folders");
+        let mut saved = widget::settings::section().title(fl!("favorites-saved"));
         if self.favorites.is_empty() {
-            saved = saved.add(widget::text("No favorites saved yet."));
+            saved = saved.add(widget::text(fl!("favorites-empty")));
         }
         for (index, favorite) in self.favorites.iter().enumerate() {
             let is_first = index == 0;
@@ -964,15 +1032,15 @@ impl App {
                 .align_y(Alignment::Center)
                 .push(
                     widget::button::icon(widget::icon::from_name("go-up-symbolic"))
-                        .tooltip("Move up (Ctrl+↑)")
+                        .tooltip(fl!("favorites-move-up"))
                         .on_press_maybe((!is_first).then_some(Message::MoveFavorite(index, true))),
                 )
                 .push(
                     widget::button::icon(widget::icon::from_name("go-down-symbolic"))
-                        .tooltip("Move down (Ctrl+↓)")
+                        .tooltip(fl!("favorites-move-down"))
                         .on_press_maybe((!is_last).then_some(Message::MoveFavorite(index, false))),
                 )
-                .push(widget::button::standard("Open").on_press(Message::GoToFavorite(index)))
+                .push(widget::button::standard(fl!("open")).on_press(Message::GoToFavorite(index)))
                 .push(
                     widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
                         .on_press(Message::RemoveFavorite(index)),
@@ -991,7 +1059,7 @@ impl App {
         }
 
         let current = self.pane(self.active_pane).current_dir();
-        let add = widget::settings::section().title("Add current folder").add(
+        let add = widget::settings::section().title(fl!("favorites-add-current")).add(
             widget::Column::new()
                 .spacing(8)
                 .push(widget::text::caption(current.display().to_string()))
@@ -1005,7 +1073,7 @@ impl App {
                                 .on_submit(|_| Message::AddFavorite)
                                 .width(Length::Fill),
                         )
-                        .push(widget::button::suggested("Add").on_press(Message::AddFavorite)),
+                        .push(widget::button::suggested(fl!("favorites-add")).on_press(Message::AddFavorite)),
                 ),
         );
 
@@ -1183,12 +1251,16 @@ impl Application for App {
         core.set_keyboard_nav(false);
         let home = home_dir();
         let settings = fs_ops::settings::load();
+        // Before anything is drawn: every text is looked up in this language.
+        localize::set_language(&settings.language);
         let user_dirs = Arc::new(fs_ops::user_dirs::load());
         let options = ListingOptions {
             hide_hidden: settings.hide_hidden_files,
             icon_style: settings.icon_style,
             user_dirs: user_dirs.clone(),
             show_thumbnails: settings.show_thumbnails,
+            font_size: settings.name_font_size,
+            separate_extension: settings.separate_extension,
         };
         // Reopen the panes as they were when the app was last used.
         let session = fs_ops::session::load();
@@ -1229,8 +1301,6 @@ impl Application for App {
             open_with: None,
             details: None,
             settings,
-            language_names: LANGUAGES.iter().map(|(_, name)| *name).collect(),
-            icon_style_names: ICON_STYLES.iter().map(|(_, name)| *name).collect(),
             user_dirs,
             drawer: None,
             saved_session: session,
@@ -1265,11 +1335,11 @@ impl Application for App {
         let drawer = match self.drawer? {
             DrawerPage::Settings => {
                 context_drawer::context_drawer(self.settings_page(), Message::CloseDrawer)
-                    .title("Settings")
+                    .title(fl!("settings"))
             }
             DrawerPage::Favorites => {
                 context_drawer::context_drawer(self.favorites_page(), Message::CloseDrawer)
-                    .title("Favorites")
+                    .title(fl!("favorites"))
             }
         };
         Some(drawer)
@@ -1321,36 +1391,36 @@ impl Application for App {
 
     fn dialog(&self) -> Option<Element<'_, Message>> {
         if let Some((src, dest)) = &self.pending_conflict {
-            let body = format!(
-                "\"{}\" already exists in the destination. Replace it with \"{}\"?",
-                tab_label(dest),
-                tab_label(src)
+            let body = fl!(
+                "conflict-body",
+                existing = tab_label(dest),
+                new = tab_label(src)
             );
             let [skip_all_id, replace_all_id, skip_id, replace_id] = self.conflict_buttons.clone();
             let all_buttons = widget::Row::new()
                 .spacing(8)
                 .push(
-                    widget::button::standard("Skip All")
+                    widget::button::standard(fl!("skip-all"))
                         .id(skip_all_id)
                         .on_press(Message::ResolveConflict(ConflictResolution::SkipAll)),
                 )
                 .push(
-                    widget::button::standard("Replace All")
+                    widget::button::standard(fl!("replace-all"))
                         .id(replace_all_id)
                         .on_press(Message::ResolveConflict(ConflictResolution::ReplaceAll)),
                 );
             return Some(
                 widget::dialog()
-                    .title("File Already Exists")
+                    .title(fl!("conflict-title"))
                     .body(body)
                     .control(all_buttons)
                     .primary_action(
-                        widget::button::destructive("Replace")
+                        widget::button::destructive(fl!("replace"))
                             .id(replace_id)
                             .on_press(Message::ResolveConflict(ConflictResolution::Replace)),
                     )
                     .secondary_action(
-                        widget::button::standard("Skip")
+                        widget::button::standard(fl!("skip"))
                             .id(skip_id)
                             .on_press(Message::ResolveConflict(ConflictResolution::Skip)),
                     )
@@ -1360,26 +1430,26 @@ impl Application for App {
 
         if let Some(compress) = &self.compress {
             let body = match compress.sources.as_slice() {
-                [single] => format!("Compress \"{}\" into a zip archive.", tab_label(single)),
-                many => format!("Compress {} items into a zip archive.", many.len()),
+                [single] => fl!("compress-one", name = tab_label(single)),
+                many => fl!("compress-many", count = many.len()),
             };
             return Some(
                 widget::dialog()
-                    .title("Compress")
+                    .title(fl!("compress"))
                     .body(body)
                     .control(
-                        widget::text_input("Archive name", compress.name.as_str())
+                        widget::text_input(fl!("archive-name"), compress.name.as_str())
                             .id(self.dialog_input.clone())
                             .on_input(Message::CompressNameChanged)
                             .on_submit(|_| Message::ConfirmCompress),
                     )
                     .primary_action(
-                        widget::button::suggested("Compress")
+                        widget::button::suggested(fl!("compress"))
                             .id(self.dialog_confirm.clone())
                             .on_press(Message::ConfirmCompress),
                     )
                     .secondary_action(
-                        widget::button::standard("Cancel")
+                        widget::button::standard(fl!("cancel"))
                             .id(self.dialog_cancel.clone())
                             .on_press(Message::CancelCompress),
                     )
@@ -1398,20 +1468,20 @@ impl Application for App {
         if let Some(new_folder) = &self.new_folder {
             return Some(
                 widget::dialog()
-                    .title("New Folder")
+                    .title(fl!("new-folder"))
                     .control(
-                        widget::text_input("Folder name", new_folder.name.as_str())
+                        widget::text_input(fl!("folder-name"), new_folder.name.as_str())
                             .id(self.dialog_input.clone())
                             .on_input(Message::NewFolderInputChanged)
                             .on_submit(|_| Message::ConfirmNewFolder),
                     )
                     .primary_action(
-                        widget::button::suggested("Create")
+                        widget::button::suggested(fl!("create"))
                             .id(self.dialog_confirm.clone())
                             .on_press(Message::ConfirmNewFolder),
                     )
                     .secondary_action(
-                        widget::button::standard("Cancel")
+                        widget::button::standard(fl!("cancel"))
                             .id(self.dialog_cancel.clone())
                             .on_press(Message::CancelNewFolder),
                     )
@@ -1422,21 +1492,21 @@ impl Application for App {
         if let Some(rename) = &self.rename {
             return Some(
                 widget::dialog()
-                    .title("Rename")
-                    .body(format!("Renaming \"{}\"", tab_label(&rename.path)))
+                    .title(fl!("rename"))
+                    .body(fl!("renaming", name = tab_label(&rename.path)))
                     .control(
-                        widget::text_input("New name", rename.name.as_str())
+                        widget::text_input(fl!("new-name"), rename.name.as_str())
                             .id(self.dialog_input.clone())
                             .on_input(Message::RenameInputChanged)
                             .on_submit(|_| Message::ConfirmRename),
                     )
                     .primary_action(
-                        widget::button::suggested("Rename")
+                        widget::button::suggested(fl!("rename"))
                             .id(self.dialog_confirm.clone())
                             .on_press(Message::ConfirmRename),
                     )
                     .secondary_action(
-                        widget::button::standard("Cancel")
+                        widget::button::standard(fl!("cancel"))
                             .id(self.dialog_cancel.clone())
                             .on_press(Message::CancelRename),
                     )
@@ -1446,20 +1516,20 @@ impl Application for App {
 
         if let Some(sources) = &self.confirm_delete {
             let body = match sources.as_slice() {
-                [single] => format!("Move \"{}\" to the trash?", tab_label(single)),
-                many => format!("Move {} items to the trash?", many.len()),
+                [single] => fl!("delete-one", name = tab_label(single)),
+                many => fl!("delete-many", count = many.len()),
             };
             return Some(
                 widget::dialog()
-                    .title("Delete")
+                    .title(fl!("delete"))
                     .body(body)
                     .primary_action(
-                        widget::button::destructive("Delete")
+                        widget::button::destructive(fl!("delete"))
                             .id(self.confirm_delete_button.clone())
                             .on_press(Message::ConfirmDelete),
                     )
                     .secondary_action(
-                        widget::button::standard("Cancel")
+                        widget::button::standard(fl!("cancel"))
                             .id(self.cancel_delete_button.clone())
                             .on_press(Message::CancelDelete),
                     )
@@ -1479,24 +1549,28 @@ impl Application for App {
         let percent = (op.fraction() * 100.0).round() as u32;
 
         let title = match &op.error {
-            Some(_) => format!("{} failed", op.kind.label()),
-            None => format!("{} {percent}%", op.kind.label()),
+            Some(_) => op.kind.failed_label(),
+            None => fl!("op-progress", operation = op.kind.label(), percent = percent),
         };
         let mut amounts = Vec::new();
         if op.files_total > 0 {
-            amounts.push(format!("{} of {} files", op.files_done, op.files_total));
+            amounts.push(fl!(
+                "op-files-done",
+                done = op.files_done,
+                total = op.files_total
+            ));
         }
         if op.bytes_total > 0 {
-            amounts.push(format!(
-                "{} of {}",
-                format_size(op.bytes_done),
-                format_size(op.bytes_total)
+            amounts.push(fl!(
+                "op-bytes-done",
+                done = format_size(op.bytes_done),
+                total = format_size(op.bytes_total)
             ));
         }
         let detail = match (&op.error, &op.current_file) {
             (Some(err), _) => err.clone(),
             (None, Some(file)) => format!("{}  —  {}", amounts.join("  ·  "), tab_label(file)),
-            (None, None) => "Preparing…".to_string(),
+            (None, None) => fl!("op-preparing"),
         };
 
         // The theme's colors, resolved now: the bar's style takes plain colors.
@@ -1519,7 +1593,7 @@ impl Application for App {
                     .wrapping(cosmic::iced::core::text::Wrapping::None),
             )
             .push(
-                widget::button::standard(if failed { "Close" } else { "Cancel" })
+                widget::button::standard(if failed { fl!("close") } else { fl!("cancel") })
                     .on_press(Message::CancelOperation),
             );
         let bar = widget::determinate_linear(op.fraction())
@@ -1600,7 +1674,9 @@ fn function_key_bar() -> Element<'static, Message> {
     // `button::standard(..).width(Fill)` only widens the label inside the
     // button, so build the button around a centered label and make the button
     // itself fill: every key then gets an equal share of the window's width.
-    let key_button = |label: &'static str, action: Action| {
+    // "F2" etc. stay as they are; only the action's name is translated.
+    let key_button = |key: &str, label: String, action: Action| {
+        let label = format!("{key} {label}");
         widget::button::custom(
             widget::text(label)
                 .width(Length::Fill)
@@ -1615,15 +1691,15 @@ fn function_key_bar() -> Element<'static, Message> {
     widget::Row::new()
         .spacing(4)
         .padding(4)
-        .push(key_button("F2 Rename", Action::Rename))
-        .push(key_button("F3 View", Action::View))
-        .push(key_button("F4 Edit", Action::Edit))
-        .push(key_button("F5 Copy", Action::Copy))
-        .push(key_button("F6 Move", Action::Move))
-        .push(key_button("F7 MkDir", Action::NewFolder))
-        .push(key_button("F8 Delete", Action::Delete))
-        .push(key_button("F9 Terminal", Action::Terminal))
-        .push(key_button("Alt+F4 Exit", Action::Quit))
+        .push(key_button("F2", fl!("fkey-rename"), Action::Rename))
+        .push(key_button("F3", fl!("fkey-view"), Action::View))
+        .push(key_button("F4", fl!("fkey-edit"), Action::Edit))
+        .push(key_button("F5", fl!("fkey-copy"), Action::Copy))
+        .push(key_button("F6", fl!("fkey-move"), Action::Move))
+        .push(key_button("F7", fl!("fkey-mkdir"), Action::NewFolder))
+        .push(key_button("F8", fl!("fkey-delete"), Action::Delete))
+        .push(key_button("F9", fl!("fkey-terminal"), Action::Terminal))
+        .push(key_button("Alt+F4", fl!("fkey-exit"), Action::Quit))
         .width(Length::Fill)
         .into()
 }
@@ -1650,23 +1726,23 @@ fn key_subscription() -> Subscription<Message> {
 
 fn open_with_dialog(state: &OpenWithState) -> Element<'_, Message> {
     let body = match state.paths.as_slice() {
-        [single] => format!("Choose an application to open \"{}\".", tab_label(single)),
-        many => format!("Choose an application to open {} items.", many.len()),
+        [single] => fl!("open-with-one", name = tab_label(single)),
+        many => fl!("open-with-many", count = many.len()),
     };
 
     let control: Element<'_, Message> = match &state.apps {
-        None => widget::text("Loading applications…").into(),
-        Some(apps) if apps.is_empty() => widget::text("No applications found.").into(),
+        None => widget::text(fl!("loading-apps")).into(),
+        Some(apps) if apps.is_empty() => widget::text(fl!("no-apps")).into(),
         Some(apps) => {
             let mut list = widget::Column::new().spacing(2);
             let mut shown_recommended_header = false;
             let mut shown_other_header = false;
             for (index, app) in apps.iter().enumerate() {
                 if app.recommended && !shown_recommended_header {
-                    list = list.push(widget::text::heading("Recommended Applications"));
+                    list = list.push(widget::text::heading(fl!("recommended-apps")));
                     shown_recommended_header = true;
                 } else if !app.recommended && !app.is_default && !shown_other_header {
-                    list = list.push(widget::text::heading("Other Applications"));
+                    list = list.push(widget::text::heading(fl!("other-apps")));
                     shown_other_header = true;
                 }
                 let mut row = widget::Row::new()
@@ -1675,7 +1751,7 @@ fn open_with_dialog(state: &OpenWithState) -> Element<'_, Message> {
                     .push(widget::icon(app.icon.clone()).size(24))
                     .push(widget::text(app.name.clone()).width(Length::Fill));
                 if app.is_default {
-                    row = row.push(widget::text::caption("Default"));
+                    row = row.push(widget::text::caption(fl!("default-app")));
                 }
                 list = list.push(
                     widget::button::custom(row)
@@ -1689,15 +1765,15 @@ fn open_with_dialog(state: &OpenWithState) -> Element<'_, Message> {
     };
 
     widget::dialog()
-        .title("Open With")
+        .title(fl!("open-with"))
         .body(body)
         .control(control)
-        .secondary_action(widget::button::standard("Cancel").on_press(Message::CancelOpenWith))
+        .secondary_action(widget::button::standard(fl!("cancel")).on_press(Message::CancelOpenWith))
         .into()
 }
 
 fn details_dialog(state: &DetailsState) -> Element<'_, Message> {
-    let mut rows: Vec<(&'static str, String)> = Vec::new();
+    let mut rows: Vec<(String, String)> = Vec::new();
     let location = state
         .paths
         .first()
@@ -1707,66 +1783,73 @@ fn details_dialog(state: &DetailsState) -> Element<'_, Message> {
 
     let title = match state.paths.as_slice() {
         [single] => tab_label(single),
-        many => format!("{} items", many.len()),
+        many => fl!("details-items-title", count = many.len()),
     };
 
     match &state.result {
-        None => rows.push(("Size", "Calculating…".to_string())),
-        Some(Err(err)) => rows.push(("Error", err.clone())),
+        None => rows.push((fl!("details-size-label"), fl!("details-calculating"))),
+        Some(Err(err)) => rows.push((fl!("details-error"), err.clone())),
         Some(Ok(details)) => {
             let contents = if details.contained_files + details.contained_dirs > 0 {
                 format!(
-                    " — {} files, {} folders inside",
-                    details.contained_files, details.contained_dirs
+                    " — {}",
+                    fl!(
+                        "details-contents",
+                        files = details.contained_files,
+                        folders = details.contained_dirs
+                    )
                 )
             } else {
                 String::new()
             };
             let size = format!(
-                "{} ({} bytes){contents}",
-                format_size(details.total_size),
-                details.total_size
+                "{}{contents}",
+                fl!(
+                    "details-size",
+                    size = format_size(details.total_size),
+                    bytes = details.total_size
+                )
             );
 
             match &details.single {
                 None => {
-                    rows.push(("Items", details.item_count.to_string()));
-                    rows.push(("Location", location));
-                    rows.push(("Total size", size));
+                    rows.push((fl!("details-items"), details.item_count.to_string()));
+                    rows.push((fl!("details-location"), location));
+                    rows.push((fl!("details-total-size"), size));
                 }
                 Some(entry) => {
                     let kind = match entry.kind {
-                        EntryKind::Dir => "Folder",
-                        EntryKind::File => "File",
-                        EntryKind::Symlink => "Symbolic link",
+                        EntryKind::Dir => fl!("kind-folder"),
+                        EntryKind::File => fl!("kind-file"),
+                        EntryKind::Symlink => fl!("kind-symlink"),
                     };
                     let kind = match &entry.mime_type {
                         Some(mime) => format!("{kind} ({mime})"),
                         None => kind.to_string(),
                     };
-                    rows.push(("Name", tab_label(&entry.path)));
-                    rows.push(("Type", kind));
-                    rows.push(("Location", location));
+                    rows.push((fl!("details-name"), tab_label(&entry.path)));
+                    rows.push((fl!("details-type"), kind));
+                    rows.push((fl!("details-location"), location));
                     if let Some(target) = &entry.symlink_target {
-                        rows.push(("Link target", target.display().to_string()));
+                        rows.push((fl!("details-link-target"), target.display().to_string()));
                     }
-                    rows.push(("Size", size));
+                    rows.push((fl!("details-size-label"), size));
                     let time = |t: Option<std::time::SystemTime>| {
-                        t.map(format_modified).unwrap_or_else(|| "Unknown".to_string())
+                        t.map(format_modified).unwrap_or_else(|| fl!("details-unknown"))
                     };
-                    rows.push(("Modified", time(entry.modified)));
-                    rows.push(("Accessed", time(entry.accessed)));
-                    rows.push(("Created", time(entry.created)));
+                    rows.push((fl!("details-modified"), time(entry.modified)));
+                    rows.push((fl!("details-accessed"), time(entry.accessed)));
+                    rows.push((fl!("details-created"), time(entry.created)));
                     rows.push((
-                        "Permissions",
+                        fl!("details-permissions"),
                         format!(
                             "{} ({:o})",
                             fs_ops::details::format_mode(entry.mode),
                             entry.mode
                         ),
                     ));
-                    rows.push(("Owner", entry.owner.clone()));
-                    rows.push(("Group", entry.group.clone()));
+                    rows.push((fl!("details-owner"), entry.owner.clone()));
+                    rows.push((fl!("details-group"), entry.group.clone()));
                 }
             }
         }
@@ -1785,7 +1868,7 @@ fn details_dialog(state: &DetailsState) -> Element<'_, Message> {
     widget::dialog()
         .title(title)
         .control(grid)
-        .primary_action(widget::button::standard("Close").on_press(Message::CloseDetails))
+        .primary_action(widget::button::standard(fl!("close")).on_press(Message::CloseDetails))
         .into()
 }
 
@@ -1798,7 +1881,7 @@ fn default_archive_name(sources: &[PathBuf], dir: &std::path::Path) -> String {
             .file_stem()
             .map(|stem| stem.to_string_lossy().into_owned())
             .unwrap_or_else(|| tab_label(single)),
-        _ => "Archive".to_string(),
+        _ => fl!("default-archive-name"),
     };
     let mut name = format!("{stem}.zip");
     let mut n = 2;

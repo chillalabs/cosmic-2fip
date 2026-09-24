@@ -34,6 +34,8 @@ pub enum Action {
     /// Shift+↓ / Shift+↑: grow or shrink the selection by one row.
     ExtendSelectionDown,
     ExtendSelectionUp,
+    /// Space: calculate the total size of the selected folders.
+    CalculateSize,
     /// Home / End: first / last item; with Shift, extend the selection there.
     SelectFirst,
     SelectLast,
@@ -111,6 +113,8 @@ pub fn default_keybinds() -> HashMap<KeyBind, Action> {
     bind(&[], Key::Named(Named::ArrowUp), Action::SelectPrevious);
     bind(&[Modifier::Shift], Key::Named(Named::ArrowDown), Action::ExtendSelectionDown);
     bind(&[Modifier::Shift], Key::Named(Named::ArrowUp), Action::ExtendSelectionUp);
+    // Space arrives as the character " " (there is no named Space key).
+    bind(&[], Key::Character(" ".into()), Action::CalculateSize);
     bind(&[], Key::Named(Named::Home), Action::SelectFirst);
     bind(&[], Key::Named(Named::End), Action::SelectLast);
     bind(&[Modifier::Shift], Key::Named(Named::Home), Action::ExtendSelectionToFirst);

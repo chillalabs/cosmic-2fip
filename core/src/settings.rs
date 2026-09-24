@@ -10,11 +10,42 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     /// Hide dotfiles (names starting with `.`) from the file listings.
     pub hide_hidden_files: bool,
-    /// UI language code. Only `"en"` exists for now; not applied anywhere yet.
+    /// UI language: "system" (follow the desktop), "en", "es" (Spain) or
+    /// "es-419" (Latin America).
     pub language: String,
     pub icon_style: IconStyle,
     /// Show previews of images, PDFs, videos, ... instead of type icons.
     pub show_thumbnails: bool,
+    /// Text size of file and folder names in the listings.
+    pub name_font_size: FontSize,
+    /// List view: show the extension in its own "Ext" column (like Total
+    /// Commander) instead of as part of the name.
+    pub separate_extension: bool,
+}
+
+/// Text size for file and folder names; smaller sizes fit more files on
+/// screen (the list's rows get shorter too).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FontSize {
+    /// libcosmic's normal body text size.
+    #[default]
+    Default,
+    Small,
+    Smaller,
+    Tiny,
+}
+
+impl FontSize {
+    /// Size in pixels.
+    pub fn px(self) -> u16 {
+        match self {
+            FontSize::Default => 14,
+            FontSize::Small => 13,
+            FontSize::Smaller => 12,
+            FontSize::Tiny => 11,
+        }
+    }
 }
 
 /// How a pane lays out its files (saved per pane in the session).
@@ -43,9 +74,11 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             hide_hidden_files: true,
-            language: "en".to_string(),
+            language: "system".to_string(),
             icon_style: IconStyle::default(),
             show_thumbnails: true,
+            name_font_size: FontSize::default(),
+            separate_extension: true,
         }
     }
 }
@@ -121,6 +154,8 @@ mod tests {
             language: "en".to_string(),
             icon_style: IconStyle::Monochrome,
             show_thumbnails: false,
+            name_font_size: FontSize::Smaller,
+            separate_extension: false,
         };
 
         save_to(&path, &settings).unwrap();
@@ -137,8 +172,17 @@ mod tests {
         let loaded = load_from(&path);
 
         assert!(!loaded.hide_hidden_files);
-        assert_eq!(loaded.language, "en");
+        assert_eq!(loaded.language, "system");
         assert_eq!(loaded.icon_style, IconStyle::Colorful);
+        assert_eq!(loaded.name_font_size, FontSize::Default);
+        assert!(loaded.separate_extension);
+    }
+
+    #[test]
+    fn font_sizes_get_smaller_and_default_matches_libcosmic() {
+        assert_eq!(FontSize::Default.px(), 14);
+        let sizes = [FontSize::Default, FontSize::Small, FontSize::Smaller, FontSize::Tiny];
+        assert!(sizes.windows(2).all(|pair| pair[0].px() > pair[1].px()));
     }
 
     #[test]

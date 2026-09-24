@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use cosmic::widget::table;
@@ -36,6 +36,17 @@ pub struct TabState {
     /// the keyboard currently is. Kept as paths so they survive reloads.
     anchor: Option<PathBuf>,
     cursor: Option<PathBuf>,
+    /// Folder sizes worked out on request (Space), shown in the Size column.
+    /// Kept across reloads of the same folder; cleared when navigating away.
+    pub dir_sizes: HashMap<PathBuf, DirSize>,
+}
+
+/// A folder's total size (everything inside, recursively), as calculated on
+/// request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirSize {
+    Calculating,
+    Done(u64),
 }
 
 /// A selection to apply after navigating, so the keyboard keeps its place.
@@ -54,6 +65,7 @@ impl TabState {
             all_entries: Vec::new(),
             entries: table::MultiSelectModel::new(vec![
                 Column::Name,
+                Column::Ext,
                 Column::Size,
                 Column::Modified,
             ]),
@@ -67,12 +79,33 @@ impl TabState {
             sort: (Column::Name, true),
             anchor: None,
             cursor: None,
+            dir_sizes: HashMap::new(),
+        }
+    }
+
+    /// Size to count for `item`: a file's own size, a folder's calculated
+    /// total (0 until calculated; a folder entry's own size says nothing).
+    pub fn item_size(&self, item: &FileItem) -> u64 {
+        if !item.is_dir() {
+            return item.size();
+        }
+        match self.dir_sizes.get(&item.path) {
+            Some(DirSize::Done(bytes)) => *bytes,
+            _ => 0,
         }
     }
 
     /// The sort column and direction (`true` = ascending).
     pub fn sort(&self) -> (Column, bool) {
         self.sort
+    }
+
+    /// Sorts by name instead if the tab is sorted by extension but the Ext
+    /// column is hidden (the user couldn't see or change that sort).
+    pub fn ensure_visible_sort(&mut self, separate_extension: bool) {
+        if !separate_extension && self.sort.0 == Column::Ext {
+            self.sort = (Column::Name, true);
+        }
     }
 
     /// Sorts by `category`: ascending the first time, reversing the
@@ -407,6 +440,8 @@ mod tests {
             icon_style: IconStyle::Colorful,
             user_dirs: Arc::new(HashMap::new()),
             show_thumbnails: false,
+            font_size: fs_ops::settings::FontSize::Default,
+            separate_extension: true,
         }
     }
 
@@ -449,6 +484,38 @@ mod tests {
     }
 
     #[test]
+    fn sorts_by_extension_then_name_with_folders_first() {
+        let mut tab = tab_with_kinds(&[
+            ("b.txt", EntryKind::File, 1),
+            ("a.pdf", EntryKind::File, 1),
+            ("c.pdf", EntryKind::File, 1),
+            ("docs", EntryKind::Dir, 0),
+            ("README", EntryKind::File, 1),
+        ]);
+        tab.sort_by(Column::Ext, &options());
+        assert_eq!(listed_names(&tab), ["docs", "README", "a.pdf", "c.pdf", "b.txt"]);
+    }
+
+    #[test]
+    fn hiding_the_ext_column_falls_back_to_sorting_by_name() {
+        let mut tab = tab_with_kinds(&[
+            ("b.aaa", EntryKind::File, 1),
+            ("a.zzz", EntryKind::File, 1),
+        ]);
+        tab.sort_by(Column::Ext, &options());
+        assert_eq!(listed_names(&tab), ["b.aaa", "a.zzz"]);
+
+        tab.ensure_visible_sort(false);
+        tab.rebuild(&options());
+        assert_eq!(tab.sort(), (Column::Name, true));
+        assert_eq!(listed_names(&tab), ["a.zzz", "b.aaa"]);
+
+        tab.sort_by(Column::Ext, &options());
+        tab.ensure_visible_sort(true);
+        assert_eq!(tab.sort().0, Column::Ext, "kept while the column shows");
+    }
+
+    #[test]
     fn sorting_by_size_survives_a_reload() {
         let mut tab = tab_with_kinds(&[
             ("big", EntryKind::File, 300),
@@ -470,6 +537,8 @@ mod tests {
             icon_style: IconStyle::Colorful,
             user_dirs: Arc::new(HashMap::new()),
             show_thumbnails: false,
+            font_size: fs_ops::settings::FontSize::Default,
+            separate_extension: true,
         };
         let entries = names
             .iter()
@@ -555,6 +624,8 @@ mod tests {
             icon_style: IconStyle::Colorful,
             user_dirs: Arc::new(HashMap::new()),
             show_thumbnails: false,
+            font_size: fs_ops::settings::FontSize::Default,
+            separate_extension: true,
         });
         let mut names: Vec<String> = tab
             .entries
