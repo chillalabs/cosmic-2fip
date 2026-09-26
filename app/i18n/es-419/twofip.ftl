@@ -75,8 +75,8 @@ path-placeholder = Escribe la ruta de una carpeta
 
 ## Configuración
 settings-general = General
-settings-hide-hidden = Ocultar archivos ocultos
-settings-hide-hidden-description = Archivos y carpetas cuyo nombre empieza con un punto
+settings-show-hidden = Mostrar archivos ocultos
+settings-show-hidden-description = Archivos y carpetas cuyo nombre empieza con un punto
 settings-separate-ext = Mostrar la extensión en su propia columna
 settings-separate-ext-description = Vista de lista: columnas Nombre y Ext separadas, como en Total Commander
 settings-thumbnails = Mostrar miniaturas

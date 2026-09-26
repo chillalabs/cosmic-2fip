@@ -29,8 +29,8 @@ no-tab-open = Nenhum separador aberto
 filter-placeholder = Filtrar (p. ex. relatorio ou *.txt)
 path-placeholder = Escreva o caminho de uma pasta
 
-settings-hide-hidden = Ocultar ficheiros ocultos
-settings-hide-hidden-description = Ficheiros e pastas cujo nome começa por um ponto
+settings-show-hidden = Mostrar ficheiros ocultos
+settings-show-hidden-description = Ficheiros e pastas cujo nome começa por um ponto
 settings-separate-ext-description = Vista de lista: colunas Nome e Ext. separadas, como no Total Commander
 settings-icon-style-description = «Colorido» é igual à aplicação COSMIC Files
 settings-font-size = Tamanho dos nomes de ficheiro

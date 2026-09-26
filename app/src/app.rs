@@ -90,7 +90,7 @@ pub enum Message {
     Launched,
     DetailsLoaded(Vec<PathBuf>, Result<Details, String>),
     CloseDetails,
-    HideHiddenFilesToggled(bool),
+    ShowHiddenFilesToggled(bool),
     ThumbnailsToggled(bool),
     SeparateExtensionToggled(bool),
     /// Index into [`localize::LANGUAGES`]; applied immediately.
@@ -122,7 +122,7 @@ const FONT_SIZES: [FontSize; 4] = [
 /// The Settings panel's rows, top to bottom, for keyboard navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsRow {
-    HideHidden,
+    ShowHidden,
     SeparateExtension,
     Thumbnails,
     Language,
@@ -132,7 +132,7 @@ pub enum SettingsRow {
 }
 
 const SETTINGS_ROWS: [SettingsRow; 7] = [
-    SettingsRow::HideHidden,
+    SettingsRow::ShowHidden,
     SettingsRow::SeparateExtension,
     SettingsRow::Thumbnails,
     SettingsRow::Language,
@@ -685,9 +685,9 @@ impl App {
                 self.details = None;
                 Task::none()
             }
-            Message::HideHiddenFilesToggled(hide) => {
-                self.focus_settings_row(SettingsRow::HideHidden);
-                self.set_hide_hidden_files(hide)
+            Message::ShowHiddenFilesToggled(show) => {
+                self.focus_settings_row(SettingsRow::ShowHidden);
+                self.set_hide_hidden_files(!show)
             }
             Message::SeparateExtensionToggled(separate) => {
                 self.focus_settings_row(SettingsRow::SeparateExtension);
@@ -1117,8 +1117,9 @@ impl App {
     /// Toggles a checkbox setting, or moves a list setting `step` options.
     fn change_setting(&mut self, row: SettingsRow, step: isize) -> Task<Message> {
         let message = match row {
-            SettingsRow::HideHidden => {
-                Message::HideHiddenFilesToggled(!self.settings.hide_hidden_files)
+            SettingsRow::ShowHidden => {
+                // Shown now ⇔ hidden before: flip it.
+                Message::ShowHiddenFilesToggled(self.settings.hide_hidden_files)
             }
             SettingsRow::SeparateExtension => {
                 Message::SeparateExtensionToggled(!self.settings.separate_extension)
@@ -1326,11 +1327,11 @@ impl App {
         let general = widget::settings::section()
             .title(fl!("settings-general"))
             .add(self.checkbox_row(
-                SettingsRow::HideHidden,
-                fl!("settings-hide-hidden"),
-                fl!("settings-hide-hidden-description"),
-                self.settings.hide_hidden_files,
-                Message::HideHiddenFilesToggled,
+                SettingsRow::ShowHidden,
+                fl!("settings-show-hidden"),
+                fl!("settings-show-hidden-description"),
+                !self.settings.hide_hidden_files,
+                Message::ShowHiddenFilesToggled,
             ))
             .add(self.checkbox_row(
                 SettingsRow::SeparateExtension,

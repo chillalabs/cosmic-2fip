@@ -73,8 +73,8 @@ path-placeholder = Saisissez le chemin d’un dossier
 
 ## Paramètres
 settings-general = Général
-settings-hide-hidden = Masquer les fichiers cachés
-settings-hide-hidden-description = Fichiers et dossiers dont le nom commence par un point
+settings-show-hidden = Afficher les fichiers cachés
+settings-show-hidden-description = Fichiers et dossiers dont le nom commence par un point
 settings-separate-ext = Afficher l’extension dans sa propre colonne
 settings-separate-ext-description = Vue en liste : colonnes Nom et Ext. séparées, comme dans Total Commander
 settings-thumbnails = Afficher les miniatures

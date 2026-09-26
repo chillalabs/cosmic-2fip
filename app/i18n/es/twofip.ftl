@@ -6,7 +6,7 @@ settings = Ajustes
 
 op-progress = { $operation } { $percent } %
 
-settings-hide-hidden-description = Archivos y carpetas cuyo nombre empieza por un punto
+settings-show-hidden-description = Archivos y carpetas cuyo nombre empieza por un punto
 settings-thumbnails-description = Vistas previas de imágenes, PDF, vídeos y fuentes
 settings-icon-style = Estilo de iconos
 icon-style-monochrome = Monocromo

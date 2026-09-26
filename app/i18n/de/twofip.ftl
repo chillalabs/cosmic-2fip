@@ -73,8 +73,8 @@ path-placeholder = Ordnerpfad eingeben
 
 ## Einstellungen
 settings-general = Allgemein
-settings-hide-hidden = Versteckte Dateien ausblenden
-settings-hide-hidden-description = Dateien und Ordner, deren Name mit einem Punkt beginnt
+settings-show-hidden = Versteckte Dateien anzeigen
+settings-show-hidden-description = Dateien und Ordner, deren Name mit einem Punkt beginnt
 settings-separate-ext = Dateierweiterung in eigener Spalte anzeigen
 settings-separate-ext-description = Listenansicht: getrennte Spalten „Name“ und „Erw.“, wie im Total Commander
 settings-thumbnails = Vorschaubilder anzeigen

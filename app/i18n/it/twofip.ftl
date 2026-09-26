@@ -73,8 +73,8 @@ path-placeholder = Digita il percorso di una cartella
 
 ## Impostazioni
 settings-general = Generale
-settings-hide-hidden = Nascondi i file nascosti
-settings-hide-hidden-description = File e cartelle il cui nome inizia con un punto
+settings-show-hidden = Mostra i file nascosti
+settings-show-hidden-description = File e cartelle il cui nome inizia con un punto
 settings-separate-ext = Mostra l'estensione in una colonna separata
 settings-separate-ext-description = Vista elenco: colonne Nome ed Est. separate, come in Total Commander
 settings-thumbnails = Mostra le miniature

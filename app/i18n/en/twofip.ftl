@@ -73,8 +73,8 @@ path-placeholder = Type a folder path
 
 ## Settings
 settings-general = General
-settings-hide-hidden = Hide hidden files
-settings-hide-hidden-description = Files and folders whose name starts with a dot
+settings-show-hidden = Show hidden files
+settings-show-hidden-description = Files and folders whose name starts with a dot
 settings-separate-ext = Show extension in its own column
 settings-separate-ext-description = List view: separate Name and Ext columns, like Total Commander
 settings-thumbnails = Show thumbnails
