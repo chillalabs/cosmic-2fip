@@ -6,9 +6,13 @@ pub async fn rename(path: PathBuf, new_name: String) -> Result<PathBuf, String> 
         return Err(format!("{} has no parent directory", path.display()));
     };
     let dest = parent.join(&new_name);
-    tokio::fs::rename(&path, &dest)
-        .await
-        .map_err(|err| format!("failed to rename {} to {}: {err}", path.display(), dest.display()))?;
+    tokio::fs::rename(&path, &dest).await.map_err(|err| {
+        format!(
+            "failed to rename {} to {}: {err}",
+            path.display(),
+            dest.display()
+        )
+    })?;
     Ok(dest)
 }
 

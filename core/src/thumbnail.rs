@@ -127,8 +127,8 @@ fn generate(path: &Path, mime: &str, uri: &str, mtime: u64, target: &Path) -> bo
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     );
-    let raw = PathBuf::from(format!("/tmp/.gnome_desktop_thumbnail.pa2-{unique}.png"));
-    let tagged = dir.join(format!(".pa2-{unique}.png"));
+    let raw = PathBuf::from(format!("/tmp/.gnome_desktop_thumbnail.2fip-{unique}.png"));
+    let tagged = dir.join(format!(".2fip-{unique}.png"));
 
     let ok = run_thumbnailer(exec, path, uri, &raw)
         && add_thumbnail_tags(&raw, &tagged, uri, mtime).is_some()
@@ -140,7 +140,10 @@ fn generate(path: &Path, mime: &str, uri: &str, mtime: u64, target: &Path) -> bo
 
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
-    fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)
 }
 
 /// Expands the thumbnailer's `Exec` line (`%s` size, `%u` URI, `%i` path,
@@ -233,7 +236,7 @@ fn add_thumbnail_tags(raw: &Path, tagged: &Path, uri: &str, mtime: u64) -> Optio
         .add_text_chunk("Thumb::MTime".to_string(), mtime.to_string())
         .ok()?;
     encoder
-        .add_text_chunk("Software".to_string(), "pa2".to_string())
+        .add_text_chunk("Software".to_string(), "2fip".to_string())
         .ok()?;
     let mut writer = encoder.write_header().ok()?;
     writer.write_image_data(&pixels).ok()?;
@@ -312,9 +315,8 @@ fn program_exists(program: &str) -> bool {
     if program.contains('/') {
         return Path::new(program).is_file();
     }
-    std::env::var_os("PATH").is_some_and(|paths| {
-        std::env::split_paths(&paths).any(|dir| dir.join(program).is_file())
-    })
+    std::env::var_os("PATH")
+        .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(program).is_file()))
 }
 
 /// Seconds since the epoch of `time`, for callers keying caches by mtime.
@@ -380,7 +382,10 @@ mod tests {
     #[test]
     fn guesses_mime_from_extension() {
         assert_eq!(guess_mime(Path::new("x.PNG")).as_deref(), Some("image/png"));
-        assert_eq!(guess_mime(Path::new("doc.pdf")).as_deref(), Some("application/pdf"));
+        assert_eq!(
+            guess_mime(Path::new("doc.pdf")).as_deref(),
+            Some("application/pdf")
+        );
         assert_eq!(guess_mime(Path::new("README")), None);
     }
 

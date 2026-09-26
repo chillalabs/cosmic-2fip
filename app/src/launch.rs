@@ -129,7 +129,9 @@ fn plan_view_or_edit(paths: &[PathBuf], mode: OpenMode) -> Vec<(Option<AppEntry>
     let mut groups: Vec<(Option<String>, Vec<PathBuf>)> = Vec::new();
     for path in paths.iter().filter(|path| !path.is_dir()) {
         let mime = fs_ops::mime::mime_type(path);
-        let is_image = mime.as_deref().is_some_and(|mime| mime.starts_with("image/"));
+        let is_image = mime
+            .as_deref()
+            .is_some_and(|mime| mime.starts_with("image/"));
         let app_id = if is_image {
             // The viewer registered for this image type, or the one for PNG
             // (formats like WebP often have no default of their own).

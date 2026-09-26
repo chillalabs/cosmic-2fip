@@ -69,7 +69,11 @@ pub fn menu_bar<'a>(
         button(fl!("copy"), "edit-copy-symbolic", Action::CopyToClipboard),
         paste,
         MenuItem::Divider,
-        button(fl!("select-all"), "edit-select-all-symbolic", Action::SelectAll),
+        button(
+            fl!("select-all"),
+            "edit-select-all-symbolic",
+            Action::SelectAll,
+        ),
         MenuItem::Divider,
         button(fl!("rename-ellipsis"), "edit-symbolic", Action::Rename),
         button(fl!("delete"), "user-trash-symbolic", Action::Delete),
@@ -99,7 +103,11 @@ pub fn menu_bar<'a>(
         MenuItem::Divider,
         button(fl!("favorites"), "starred-symbolic", Action::Favorites),
         MenuItem::Divider,
-        button(fl!("settings"), "preferences-system-symbolic", Action::Settings),
+        button(
+            fl!("settings"),
+            "preferences-system-symbolic",
+            Action::Settings,
+        ),
     ];
 
     menu::bar(vec![

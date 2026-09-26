@@ -63,7 +63,10 @@ pub enum OpEvent {
     Progress(OpProgress),
     /// `dest` already exists. Sent once, then the operation blocks until the
     /// UI calls the matching [`ConflictHandle::respond`].
-    Conflict { src: PathBuf, dest: PathBuf },
+    Conflict {
+        src: PathBuf,
+        dest: PathBuf,
+    },
     Done,
     Cancelled,
     Error(String),

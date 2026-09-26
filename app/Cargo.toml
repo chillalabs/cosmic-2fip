@@ -1,9 +1,14 @@
 [package]
-name = "pa2"
+name = "twofip"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+
+# The command is "2fip", but Cargo package names can't start with a digit.
+[[bin]]
+name = "2fip"
+path = "src/main.rs"
 
 [dependencies]
 fs-ops = { path = "../core" }

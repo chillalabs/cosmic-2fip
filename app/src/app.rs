@@ -22,15 +22,15 @@ use fs_ops::user_dirs::UserDir;
 use fs_ops::EntryKind;
 
 use crate::file_item::{format_modified, format_size, ListingOptions};
+use crate::fl;
 use crate::keybinds::{default_keybinds, Action};
 use crate::launch::{self, open_with_default_app, AppEntry, OpenMode};
 use crate::localize;
-use crate::themes;
-use crate::fl;
 use crate::menu_bar::menu_bar;
 use crate::operation::{OpKind, OperationState};
 use crate::pane::{home_dir, PaneMessage, PaneState, SelectMode};
 use crate::tab::tab_label;
+use crate::themes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PaneId {
@@ -151,7 +151,7 @@ const COLOR_THEMES: [ColorTheme; 15] = [
     ColorTheme::System,
     ColorTheme::Light,
     ColorTheme::Dark,
-    // pa2's own palettes, alphabetically.
+    // 2fip's own palettes, alphabetically.
     ColorTheme::AyuDark,
     ColorTheme::CatppuccinMacchiato,
     ColorTheme::CatppuccinMocha,
@@ -611,7 +611,8 @@ impl App {
                 };
                 let path = favorite.path.clone();
                 self.close_drawer();
-                self.pane_mut(self.active_pane).update(PaneMessage::Navigate(path))
+                self.pane_mut(self.active_pane)
+                    .update(PaneMessage::Navigate(path))
             }
             Message::CompressNameChanged(value) => {
                 if let Some(compress) = &mut self.compress {
@@ -877,9 +878,13 @@ impl App {
                 .pane_mut(self.active_pane)
                 .update(PaneMessage::CloseActiveTab),
             Action::GoBack => self.pane_mut(self.active_pane).update(PaneMessage::GoBack),
-            Action::GoForward => self.pane_mut(self.active_pane).update(PaneMessage::GoForward),
+            Action::GoForward => self
+                .pane_mut(self.active_pane)
+                .update(PaneMessage::GoForward),
             Action::GoUp => self.pane_mut(self.active_pane).update(PaneMessage::GoUp),
-            Action::SelectNext => self.pane_mut(self.active_pane).update(PaneMessage::SelectNext),
+            Action::SelectNext => self
+                .pane_mut(self.active_pane)
+                .update(PaneMessage::SelectNext),
             Action::CalculateSize => self
                 .pane_mut(self.active_pane)
                 .update(PaneMessage::CalculateDirSizes),
@@ -984,7 +989,9 @@ impl App {
                     Message::DetailsLoaded(paths, result)
                 })
             }
-            Action::SelectAll => self.pane_mut(self.active_pane).update(PaneMessage::SelectAll),
+            Action::SelectAll => self
+                .pane_mut(self.active_pane)
+                .update(PaneMessage::SelectAll),
             Action::Settings => {
                 self.toggle_drawer(DrawerPage::Settings);
                 Task::none()
@@ -1023,7 +1030,7 @@ impl App {
         self.apply_settings()
     }
 
-    /// Switches pa2's colors to the chosen theme; "System" goes back to the
+    /// Switches 2fip's colors to the chosen theme; "System" goes back to the
     /// desktop's current theme (libcosmic keeps it up to date meanwhile).
     fn apply_color_theme(&self) -> Task<Message> {
         let theme = match self.settings.color_theme {
@@ -1203,7 +1210,10 @@ impl App {
             .icon(widget::checkbox(checked).on_toggle(on_toggle))
             .control(widget::Space::new());
         // The whole row toggles (and so also takes the focus, see `update`).
-        self.settings_row(row, widget::mouse_area(content).on_press(on_toggle(!checked)))
+        self.settings_row(
+            row,
+            widget::mouse_area(content).on_press(on_toggle(!checked)),
+        )
     }
 
     /// While the Favorites panel is open, ↑/↓ move its highlight and Enter
@@ -1346,36 +1356,42 @@ impl App {
 
         let theme = widget::settings::section()
             .title(fl!("settings-theme"))
-            .add(self.settings_row(
-                SettingsRow::ColorTheme,
-                widget::settings::item::builder(fl!("settings-color-theme"))
-                    .description(fl!("settings-color-theme-description"))
-                    .control(widget::dropdown(
-                        color_theme_names,
-                        selected_color_theme,
-                        Message::ColorThemeSelected,
-                    )),
-            ))
-            .add(self.settings_row(
-                SettingsRow::IconStyle,
-                widget::settings::item::builder(fl!("settings-icon-style"))
-                    .description(fl!("settings-icon-style-description"))
-                    .control(widget::dropdown(
-                        icon_style_names,
-                        selected_icon_style,
-                        Message::IconStyleSelected,
-                    )),
-            ))
-            .add(self.settings_row(
-                SettingsRow::FontSize,
-                widget::settings::item::builder(fl!("settings-font-size"))
-                    .description(fl!("settings-font-size-description"))
-                    .control(widget::dropdown(
-                        font_size_names,
-                        selected_font_size,
-                        Message::FontSizeSelected,
-                    )),
-            ));
+            .add(
+                self.settings_row(
+                    SettingsRow::ColorTheme,
+                    widget::settings::item::builder(fl!("settings-color-theme"))
+                        .description(fl!("settings-color-theme-description"))
+                        .control(widget::dropdown(
+                            color_theme_names,
+                            selected_color_theme,
+                            Message::ColorThemeSelected,
+                        )),
+                ),
+            )
+            .add(
+                self.settings_row(
+                    SettingsRow::IconStyle,
+                    widget::settings::item::builder(fl!("settings-icon-style"))
+                        .description(fl!("settings-icon-style-description"))
+                        .control(widget::dropdown(
+                            icon_style_names,
+                            selected_icon_style,
+                            Message::IconStyleSelected,
+                        )),
+                ),
+            )
+            .add(
+                self.settings_row(
+                    SettingsRow::FontSize,
+                    widget::settings::item::builder(fl!("settings-font-size"))
+                        .description(fl!("settings-font-size-description"))
+                        .control(widget::dropdown(
+                            font_size_names,
+                            selected_font_size,
+                            Message::FontSizeSelected,
+                        )),
+                ),
+            );
 
         widget::settings::view_column(vec![general.into(), theme.into()]).into()
     }
@@ -1412,41 +1428,47 @@ impl App {
             let highlighted = self.favorite_cursor == Some(index);
             saved = saved.add(
                 // A click on the row (not its buttons) highlights it.
-                widget::mouse_area(
-                    widget::container(row)
-                        .padding([4, 8])
-                        .class(cosmic::theme::Container::custom(move |theme| {
-                            highlight_style(theme, highlighted)
-                        })),
-                )
+                widget::mouse_area(widget::container(row).padding([4, 8]).class(
+                    cosmic::theme::Container::custom(move |theme| {
+                        highlight_style(theme, highlighted)
+                    }),
+                ))
                 .on_press(Message::FocusFavorite(index)),
             );
         }
 
         let current = self.pane(self.active_pane).current_dir();
-        let add = widget::settings::section().title(fl!("favorites-add-current")).add(
-            widget::Column::new()
-                .spacing(8)
-                .push(widget::text::caption(current.display().to_string()))
-                .push(
-                    widget::Row::new()
-                        .spacing(8)
-                        .align_y(Alignment::Center)
-                        .push(
-                            widget::text_input(tab_label(&current), self.favorite_name.as_str())
+        let add = widget::settings::section()
+            .title(fl!("favorites-add-current"))
+            .add(
+                widget::Column::new()
+                    .spacing(8)
+                    .push(widget::text::caption(current.display().to_string()))
+                    .push(
+                        widget::Row::new()
+                            .spacing(8)
+                            .align_y(Alignment::Center)
+                            .push(
+                                widget::text_input(
+                                    tab_label(&current),
+                                    self.favorite_name.as_str(),
+                                )
                                 .id(self.favorite_name_input.clone())
                                 .on_input(Message::FavoriteNameChanged)
                                 .on_submit(|_| Message::AddFavorite)
                                 .width(Length::Fill),
-                        )
-                        .push(widget::button::suggested(fl!("favorites-add")).on_press(Message::AddFavorite)),
-                ),
-        );
+                            )
+                            .push(
+                                widget::button::suggested(fl!("favorites-add"))
+                                    .on_press(Message::AddFavorite),
+                            ),
+                    ),
+            );
 
         widget::settings::view_column(vec![saved.into(), add.into()]).into()
     }
 
-    /// Files dropped into `dest` (drag and drop, from pa2 or another app):
+    /// Files dropped into `dest` (drag and drop, from 2fip or another app):
     /// copied, or moved if the drag asked for it or Shift is held. Files
     /// already in `dest`, and folders dropped into themselves, are skipped.
     fn drop_files(&mut self, dest: PathBuf, paths: Vec<PathBuf>, is_move: bool) -> Task<Message> {
@@ -1622,7 +1644,7 @@ impl Application for App {
     type Executor = cosmic::executor::Default;
     type Flags = ();
     type Message = Message;
-    const APP_ID: &'static str = "io.github.gonzaloism.pa2";
+    const APP_ID: &'static str = "io.github.gonzaloism.TwoFip";
 
     fn core(&self) -> &Core {
         &self.core
@@ -1639,7 +1661,7 @@ impl Application for App {
         core.set_keyboard_nav(false);
         let home = home_dir();
         // Settings saved under the app's old name (Cosmic Commander) move to
-        // ~/.config/pa2 the first time pa2 starts.
+        // ~/.config/2fip the first time 2fip starts.
         fs_ops::settings::migrate_legacy_config();
         let settings = fs_ops::settings::load();
         // Before anything is drawn: every text is looked up in this language.
@@ -1657,9 +1679,9 @@ impl Application for App {
         let session = fs_ops::session::load();
         let (left_dirs, left_active) = session.left.restore(&home);
         let (right_dirs, right_active) = session.right.restore(&home);
-        let (left, left_task) = PaneState::new(PaneId::Left, left_dirs, left_active, options.clone());
-        let (right, right_task) =
-            PaneState::new(PaneId::Right, right_dirs, right_active, options);
+        let (left, left_task) =
+            PaneState::new(PaneId::Left, left_dirs, left_active, options.clone());
+        let (right, right_task) = PaneState::new(PaneId::Right, right_dirs, right_active, options);
         let app = App {
             core,
             left,
@@ -1700,7 +1722,7 @@ impl Application for App {
             saved_session: session,
             modifiers: Modifiers::empty(),
         };
-        // A theme of pa2's own replaces the desktop's from the first frame on
+        // A theme of 2fip's own replaces the desktop's from the first frame on
         // ("System" is libcosmic's default, nothing to do).
         let theme_task = match app.settings.color_theme {
             ColorTheme::System => Task::none(),
@@ -1950,7 +1972,11 @@ impl Application for App {
 
         let title = match &op.error {
             Some(_) => op.kind.failed_label(),
-            None => fl!("op-progress", operation = op.kind.label(), percent = percent),
+            None => fl!(
+                "op-progress",
+                operation = op.kind.label(),
+                percent = percent
+            ),
         };
         let mut amounts = Vec::new();
         if op.files_total > 0 {
@@ -2054,8 +2080,16 @@ impl Application for App {
 
         let panes = widget::Row::new()
             .spacing(PANE_GAP)
-            .push(pane_frame(left, PaneId::Left, self.active_pane == PaneId::Left))
-            .push(pane_frame(right, PaneId::Right, self.active_pane == PaneId::Right))
+            .push(pane_frame(
+                left,
+                PaneId::Left,
+                self.active_pane == PaneId::Left,
+            ))
+            .push(pane_frame(
+                right,
+                PaneId::Right,
+                self.active_pane == PaneId::Right,
+            ))
             .width(Length::Fill)
             .height(Length::Fill);
 
@@ -2235,7 +2269,8 @@ fn details_dialog(state: &DetailsState) -> Element<'_, Message> {
                     }
                     rows.push((fl!("details-size-label"), size));
                     let time = |t: Option<std::time::SystemTime>| {
-                        t.map(format_modified).unwrap_or_else(|| fl!("details-unknown"))
+                        t.map(format_modified)
+                            .unwrap_or_else(|| fl!("details-unknown"))
                     };
                     rows.push((fl!("details-modified"), time(entry.modified)));
                     rows.push((fl!("details-accessed"), time(entry.accessed)));
@@ -2339,9 +2374,7 @@ fn drop_sources(dest: &std::path::Path, paths: Vec<PathBuf>) -> Vec<PathBuf> {
 
 /// Takes the keyboard focus away from whichever text field has it.
 fn unfocus_text_fields() -> Task<Message> {
-    cosmic::iced::runtime::task::widget(
-        cosmic::iced::core::widget::operation::focusable::unfocus(),
-    )
+    cosmic::iced::runtime::task::widget(cosmic::iced::core::widget::operation::focusable::unfocus())
 }
 
 /// The keyboard highlight for a list row: the accent color, like a selected
@@ -2354,7 +2387,9 @@ fn highlight_style(theme: &cosmic::Theme, highlighted: bool) -> widget::containe
     widget::container::Style {
         icon_color: Some(cosmic.on_accent_color().into()),
         text_color: Some(cosmic.on_accent_color().into()),
-        background: Some(cosmic::iced::Background::Color(cosmic.accent_color().into())),
+        background: Some(cosmic::iced::Background::Color(
+            cosmic.accent_color().into(),
+        )),
         border: cosmic::iced::Border {
             radius: cosmic.radius_s().into(),
             ..Default::default()
@@ -2379,15 +2414,18 @@ mod tests {
     fn drops_skip_files_already_there_and_folders_into_themselves() {
         let dest = std::path::Path::new("/home/me/docs");
         let dropped = vec![
-            PathBuf::from("/home/me/docs/a.txt"),   // already in docs
-            PathBuf::from("/home/me/docs"),         // docs into itself
-            PathBuf::from("/home/me"),              // parent into its child
-            PathBuf::from("/home/me/music/b.mp3"),  // fine
-            PathBuf::from("/tmp/c"),                // fine
+            PathBuf::from("/home/me/docs/a.txt"),  // already in docs
+            PathBuf::from("/home/me/docs"),        // docs into itself
+            PathBuf::from("/home/me"),             // parent into its child
+            PathBuf::from("/home/me/music/b.mp3"), // fine
+            PathBuf::from("/tmp/c"),               // fine
         ];
         assert_eq!(
             drop_sources(dest, dropped),
-            [PathBuf::from("/home/me/music/b.mp3"), PathBuf::from("/tmp/c")]
+            [
+                PathBuf::from("/home/me/music/b.mp3"),
+                PathBuf::from("/tmp/c")
+            ]
         );
     }
 

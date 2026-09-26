@@ -1,4 +1,4 @@
-# pa2 — English (base language; every key must exist here)
+# 2fip — English (base language; every key must exist here)
 
 ## Menu bar
 menu-file = File
@@ -83,7 +83,7 @@ settings-language = Language
 language-system = System default
 settings-theme = Theme
 settings-color-theme = Color theme
-settings-color-theme-description = Only affects pa2; System follows COSMIC's appearance
+settings-color-theme-description = Only affects 2fip; System follows COSMIC's appearance
 color-theme-system = System
 color-theme-light = Light
 color-theme-dark = Dark

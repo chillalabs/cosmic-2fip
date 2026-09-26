@@ -173,7 +173,7 @@ mod tests {
 
     /// Message IDs defined in one embedded `.ftl` file.
     fn keys(language: &str) -> std::collections::BTreeSet<String> {
-        let file = Localizations::get(&format!("{language}/pa2.ftl"))
+        let file = Localizations::get(&format!("{language}/twofip.ftl"))
             .expect("translation file is embedded");
         std::str::from_utf8(&file.data)
             .unwrap()
@@ -186,10 +186,16 @@ mod tests {
     #[test]
     fn translations_are_complete() {
         let english = keys("en");
-        for (language, _) in LANGUAGES.iter().filter(|(code, _)| !["system", "en"].contains(code)) {
+        for (language, _) in LANGUAGES
+            .iter()
+            .filter(|(code, _)| !["system", "en"].contains(code))
+        {
             let translated = keys(language);
             let unknown: Vec<_> = translated.difference(&english).collect();
-            assert!(unknown.is_empty(), "{language} has unknown keys: {unknown:?}");
+            assert!(
+                unknown.is_empty(),
+                "{language} has unknown keys: {unknown:?}"
+            );
             let is_override = OVERRIDES.iter().any(|(code, _)| code == language);
             if is_override {
                 assert!(!translated.is_empty(), "{language} is empty");
@@ -202,15 +208,39 @@ mod tests {
 
     #[test]
     fn maps_desktop_locales_to_supported_languages() {
-        assert_eq!(supported_for("es", Some("ES".into())).as_deref(), Some("es"));
+        assert_eq!(
+            supported_for("es", Some("ES".into())).as_deref(),
+            Some("es")
+        );
         assert_eq!(supported_for("es", None).as_deref(), Some("es"));
-        assert_eq!(supported_for("es", Some("CL".into())).as_deref(), Some("es-419"));
-        assert_eq!(supported_for("es", Some("MX".into())).as_deref(), Some("es-419"));
-        assert_eq!(supported_for("en", Some("US".into())).as_deref(), Some("en"));
-        assert_eq!(supported_for("pt", Some("BR".into())).as_deref(), Some("pt-BR"));
-        assert_eq!(supported_for("pt", Some("PT".into())).as_deref(), Some("pt"));
-        assert_eq!(supported_for("de", Some("AT".into())).as_deref(), Some("de"));
-        assert_eq!(supported_for("fr", Some("CA".into())).as_deref(), Some("fr"));
+        assert_eq!(
+            supported_for("es", Some("CL".into())).as_deref(),
+            Some("es-419")
+        );
+        assert_eq!(
+            supported_for("es", Some("MX".into())).as_deref(),
+            Some("es-419")
+        );
+        assert_eq!(
+            supported_for("en", Some("US".into())).as_deref(),
+            Some("en")
+        );
+        assert_eq!(
+            supported_for("pt", Some("BR".into())).as_deref(),
+            Some("pt-BR")
+        );
+        assert_eq!(
+            supported_for("pt", Some("PT".into())).as_deref(),
+            Some("pt")
+        );
+        assert_eq!(
+            supported_for("de", Some("AT".into())).as_deref(),
+            Some("de")
+        );
+        assert_eq!(
+            supported_for("fr", Some("CA".into())).as_deref(),
+            Some("fr")
+        );
         assert_eq!(supported_for("it", None).as_deref(), Some("it"));
         assert_eq!(supported_for("ja", Some("JP".into())), None);
     }

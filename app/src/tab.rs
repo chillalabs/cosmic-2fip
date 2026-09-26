@@ -262,7 +262,9 @@ impl TabState {
             self.select_only(*order.first()?);
             return Some((0, count));
         };
-        let anchor = self.position_of(&order, self.anchor.as_ref()).unwrap_or(cursor);
+        let anchor = self
+            .position_of(&order, self.anchor.as_ref())
+            .unwrap_or(cursor);
         let target = if forward {
             (cursor + 1).min(count - 1)
         } else {
@@ -385,13 +387,20 @@ impl TabState {
 
 /// Listing order: folders before files, then by `category` in the given
 /// direction, with the name breaking ties (e.g. equal sizes).
-fn compare_items(a: &FileItem, b: &FileItem, category: Column, ascending: bool) -> std::cmp::Ordering {
+fn compare_items(
+    a: &FileItem,
+    b: &FileItem,
+    category: Column,
+    ascending: bool,
+) -> std::cmp::Ordering {
     let by_column = a
         .compare(b, category)
         .then_with(|| a.compare(b, Column::Name));
-    b.is_dir()
-        .cmp(&a.is_dir())
-        .then(if ascending { by_column } else { by_column.reverse() })
+    b.is_dir().cmp(&a.is_dir()).then(if ascending {
+        by_column
+    } else {
+        by_column.reverse()
+    })
 }
 
 pub fn tab_label(path: &Path) -> String {
@@ -510,15 +519,16 @@ mod tests {
             ("README", EntryKind::File, 1),
         ]);
         tab.sort_by(Column::Ext, &options());
-        assert_eq!(listed_names(&tab), ["docs", "README", "a.pdf", "c.pdf", "b.txt"]);
+        assert_eq!(
+            listed_names(&tab),
+            ["docs", "README", "a.pdf", "c.pdf", "b.txt"]
+        );
     }
 
     #[test]
     fn hiding_the_ext_column_falls_back_to_sorting_by_name() {
-        let mut tab = tab_with_kinds(&[
-            ("b.aaa", EntryKind::File, 1),
-            ("a.zzz", EntryKind::File, 1),
-        ]);
+        let mut tab =
+            tab_with_kinds(&[("b.aaa", EntryKind::File, 1), ("a.zzz", EntryKind::File, 1)]);
         tab.sort_by(Column::Ext, &options());
         assert_eq!(listed_names(&tab), ["b.aaa", "a.zzz"]);
 
@@ -683,7 +693,11 @@ mod tests {
         assert_eq!(selected_names(&tab), ["b", "c"], "going back shrinks it");
         tab.extend_selection(false);
         tab.extend_selection(false);
-        assert_eq!(selected_names(&tab), ["a", "b"], "then grows past the anchor");
+        assert_eq!(
+            selected_names(&tab),
+            ["a", "b"],
+            "then grows past the anchor"
+        );
     }
 
     #[test]

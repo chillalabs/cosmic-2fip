@@ -213,7 +213,11 @@ impl table::ItemInterface<Column> for FileItem {
                     format_size(self.size).into()
                 }
             }
-            Column::Modified => self.modified.map(format_modified).unwrap_or_default().into(),
+            Column::Modified => self
+                .modified
+                .map(format_modified)
+                .unwrap_or_default()
+                .into(),
         }
     }
 
@@ -273,7 +277,10 @@ mod tests {
         assert_eq!(file("archive.tar.gz"), ("archive.tar".into(), "gz".into()));
         assert_eq!(file("README"), ("README".into(), String::new()));
         assert_eq!(file(".bashrc"), (".bashrc".into(), String::new()));
-        assert_eq!(file("ends-with-dot."), ("ends-with-dot.".into(), String::new()));
+        assert_eq!(
+            file("ends-with-dot."),
+            ("ends-with-dot.".into(), String::new())
+        );
         assert_eq!(
             split_name("photos.2024", EntryKind::Dir),
             ("photos.2024".into(), String::new())

@@ -1,10 +1,10 @@
-# pa2
+# 2fip
 
 A keyboard-driven, dual-pane file manager for the [COSMIC](https://system76.com/cosmic)
 desktop, inspired by Total Commander. Written in Rust with
 [libcosmic](https://github.com/pop-os/libcosmic).
 
-*pa2* — "pa' dos", Spanish for "for two": two panels, side by side.
+*2fip* — **2** **Fi**le **P**anel: two file panels, side by side.
 
 ## Features
 
@@ -20,7 +20,11 @@ desktop, inspired by Total Commander. Written in Rust with
   through the freedesktop thumbnail cache.
 - **Quick filter** (Ctrl+S), editable **path bar** with clickable folders,
   **favorites**, **folder sizes** on demand (Space), Open With, file details.
-- **Languages**: English, Spanish (Spain) and Spanish (Latin America).
+- **Languages**: English, German, French, Italian, Portuguese (Brazil and
+  Portugal), Spanish (Spain and Latin America).
+- **Color themes**: follow the desktop, or pick Light, Dark, Dracula, Nord,
+  Catppuccin, Gruvbox, Tokyo Night, Solarized and more.
+- **Drag and drop** between the panels and other apps.
 
 ## Keyboard
 
@@ -55,8 +59,8 @@ usual COSMIC/libcosmic build dependencies (e.g. `libxkbcommon-dev`).
 just run        # build and run a development version
 just test       # run the tests
 just install    # install to ~/.local (binary, launcher entry, icon)
-just uninstall  # remove it again (settings in ~/.config/pa2 are kept)
-just package    # dist/pa2-<version>-<arch>.tar.gz for another computer
+just uninstall  # remove it again (settings in ~/.config/2fip are kept)
+just package    # dist/2fip-<version>-<arch>.tar.gz for another computer
 ```
 
 To install a package on another computer, unpack it and run `./install.sh`.

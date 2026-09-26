@@ -29,12 +29,17 @@ async fn run(paths: Vec<PathBuf>, cancel: CancelHandle, tx: mpsc::Sender<OpEvent
             Ok(Ok(())) => {}
             Ok(Err(err)) => {
                 let _ = tx
-                    .send(OpEvent::Error(format!("failed to trash {}: {err}", path.display())))
+                    .send(OpEvent::Error(format!(
+                        "failed to trash {}: {err}",
+                        path.display()
+                    )))
                     .await;
                 return;
             }
             Err(err) => {
-                let _ = tx.send(OpEvent::Error(format!("delete task failed: {err}"))).await;
+                let _ = tx
+                    .send(OpEvent::Error(format!("delete task failed: {err}")))
+                    .await;
                 return;
             }
         }
@@ -70,7 +75,10 @@ mod tests {
             events.push(event);
         }
 
-        assert!(matches!(events.last(), Some(OpEvent::Done)), "events: {events:?}");
+        assert!(
+            matches!(events.last(), Some(OpEvent::Done)),
+            "events: {events:?}"
+        );
         assert!(!file.exists());
     }
 }

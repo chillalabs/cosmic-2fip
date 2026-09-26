@@ -1,4 +1,4 @@
-# pa2 — Italiano (traduzione completa)
+# 2fip — Italiano (traduzione completa)
 
 ## Barra dei menu
 menu-file = File
@@ -83,7 +83,7 @@ settings-language = Lingua
 language-system = Predefinita di sistema
 settings-theme = Tema
 settings-color-theme = Tema dei colori
-settings-color-theme-description = Riguarda solo pa2; «Sistema» segue l'aspetto di COSMIC
+settings-color-theme-description = Riguarda solo 2fip; «Sistema» segue l'aspetto di COSMIC
 color-theme-system = Sistema
 color-theme-light = Chiaro
 color-theme-dark = Scuro

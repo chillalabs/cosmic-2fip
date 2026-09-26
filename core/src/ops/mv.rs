@@ -42,7 +42,10 @@ async fn run(
 
         let Some(name) = source.file_name().map(PathBuf::from) else {
             let _ = tx
-                .send(OpEvent::Error(format!("{} has no file name", source.display())))
+                .send(OpEvent::Error(format!(
+                    "{} has no file name",
+                    source.display()
+                )))
                 .await;
             return;
         };
@@ -195,7 +198,11 @@ mod tests {
         let dest = dir.path().join("dest");
         std::fs::create_dir_all(src.join("project").join("sub")).unwrap();
         std::fs::create_dir_all(&dest).unwrap();
-        std::fs::write(src.join("project").join("sub").join("nested.txt"), b"nested").unwrap();
+        std::fs::write(
+            src.join("project").join("sub").join("nested.txt"),
+            b"nested",
+        )
+        .unwrap();
 
         let project = src.join("project");
         let mut stream = move_paths(
@@ -231,7 +238,10 @@ mod tests {
             conflict.clone(),
         );
 
-        assert!(matches!(stream.next().await, Some(OpEvent::Conflict { .. })));
+        assert!(matches!(
+            stream.next().await,
+            Some(OpEvent::Conflict { .. })
+        ));
         conflict.respond(ConflictResolution::Skip);
 
         let mut events = Vec::new();

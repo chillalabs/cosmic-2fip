@@ -4,11 +4,11 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug pa2",
+            "name": "Debug 2fip",
             "cargo": {
-                "args": ["build", "--bin=pa2", "-p=pa2"],
+                "args": ["build", "--bin=2fip", "-p=twofip"],
                 "filter": {
-                    "name": "pa2",
+                    "name": "2fip",
                     "kind": "bin"
                 }
             },

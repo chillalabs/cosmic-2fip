@@ -73,17 +73,19 @@ pub(super) async fn copy_planned_files(
         }
 
         if let Some(parent) = file.dest.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|err| StopReason::Error(format!("failed to create {}: {err}", parent.display())))?;
+            tokio::fs::create_dir_all(parent).await.map_err(|err| {
+                StopReason::Error(format!("failed to create {}: {err}", parent.display()))
+            })?;
         }
-        tokio::fs::copy(&file.src, &file.dest).await.map_err(|err| {
-            StopReason::Error(format!(
-                "failed to copy {} to {}: {err}",
-                file.src.display(),
-                file.dest.display()
-            ))
-        })?;
+        tokio::fs::copy(&file.src, &file.dest)
+            .await
+            .map_err(|err| {
+                StopReason::Error(format!(
+                    "failed to copy {} to {}: {err}",
+                    file.src.display(),
+                    file.dest.display()
+                ))
+            })?;
 
         bytes_done += file.size;
         files_done += 1;

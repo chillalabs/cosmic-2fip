@@ -1,4 +1,4 @@
-# pa2 — Deutsch (vollständige Übersetzung)
+# 2fip — Deutsch (vollständige Übersetzung)
 
 ## Menüleiste
 menu-file = Datei
@@ -83,7 +83,7 @@ settings-language = Sprache
 language-system = Systemstandard
 settings-theme = Design
 settings-color-theme = Farbschema
-settings-color-theme-description = Betrifft nur pa2; „System“ folgt dem Erscheinungsbild von COSMIC
+settings-color-theme-description = Betrifft nur 2fip; „System“ folgt dem Erscheinungsbild von COSMIC
 color-theme-system = System
 color-theme-light = Hell
 color-theme-dark = Dunkel

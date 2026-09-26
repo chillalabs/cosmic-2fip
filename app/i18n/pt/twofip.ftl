@@ -1,4 +1,4 @@
-# pa2 — Português (Portugal)
+# 2fip — Português (Portugal)
 # Só as chaves que diferem do português do Brasil (i18n/pt-BR); tudo o resto
 # vem desse ficheiro.
 
@@ -34,7 +34,7 @@ settings-hide-hidden-description = Ficheiros e pastas cujo nome começa por um p
 settings-separate-ext-description = Vista de lista: colunas Nome e Ext. separadas, como no Total Commander
 settings-icon-style-description = «Colorido» é igual à aplicação COSMIC Files
 settings-font-size = Tamanho dos nomes de ficheiro
-settings-color-theme-description = Afeta apenas o pa2; «Sistema» segue a aparência do COSMIC
+settings-color-theme-description = Afeta apenas o 2fip; «Sistema» segue a aparência do COSMIC
 settings-font-size-description = Um texto mais pequeno mostra mais ficheiros no ecrã
 font-size-smaller = Mais pequeno ({ $px } px)
 

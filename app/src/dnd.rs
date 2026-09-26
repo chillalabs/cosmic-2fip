@@ -1,4 +1,4 @@
-//! Drag and drop of files: the data dragged between pa2's panels and other
+//! Drag and drop of files: the data dragged between 2fip's panels and other
 //! apps (COSMIC Files, the desktop, terminals), as the standard
 //! `text/uri-list` (plus plain-text paths for apps that only take text).
 

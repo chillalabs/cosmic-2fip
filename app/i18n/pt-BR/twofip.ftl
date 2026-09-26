@@ -1,4 +1,4 @@
-# pa2 — Português (Brasil)
+# 2fip — Português (Brasil)
 # Tradução completa. O português de Portugal (i18n/pt) só redefine as chaves
 # que mudam; o resto vem deste arquivo.
 
@@ -85,7 +85,7 @@ settings-language = Idioma
 language-system = Padrão do sistema
 settings-theme = Tema
 settings-color-theme = Tema de cores
-settings-color-theme-description = Afeta apenas o pa2; "Sistema" segue a aparência do COSMIC
+settings-color-theme-description = Afeta apenas o 2fip; "Sistema" segue a aparência do COSMIC
 color-theme-system = Sistema
 color-theme-light = Claro
 color-theme-dark = Escuro

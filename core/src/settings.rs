@@ -21,11 +21,11 @@ pub struct Settings {
     /// List view: show the extension in its own "Ext" column (like Total
     /// Commander) instead of as part of the name.
     pub separate_extension: bool,
-    /// pa2's colors: the desktop's theme, or one of pa2's own.
+    /// 2fip's colors: the desktop's theme, or one of 2fip's own.
     pub color_theme: ColorTheme,
 }
 
-/// pa2's color theme (only this app; the desktop keeps its own). Saved as
+/// 2fip's color theme (only this app; the desktop keeps its own). Saved as
 /// kebab-case names ("tokyo-night-storm"); the one-word names are unchanged
 /// from earlier versions ("system", "dracula").
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,11 +149,12 @@ fn settings_path() -> PathBuf {
 }
 
 /// The app's config folder name under `~/.config`.
-const APP_DIR: &str = "pa2";
-/// The folder the app used before it was renamed to pa2.
-const LEGACY_APP_DIR: &str = "cosmic-commander";
+const APP_DIR: &str = "2fip";
+/// The folders the app used under its old names (pa2, and before that
+/// cosmic-commander), newest first.
+const LEGACY_APP_DIRS: [&str; 2] = ["pa2", "cosmic-commander"];
 
-/// `$XDG_CONFIG_HOME/pa2`, or `~/.config/pa2`.
+/// `$XDG_CONFIG_HOME/2fip`, or `~/.config/2fip`.
 pub(crate) fn config_dir() -> PathBuf {
     config_base().join(APP_DIR)
 }
@@ -169,9 +170,10 @@ fn config_base() -> PathBuf {
     home.join(".config")
 }
 
-/// Moves the settings, favorites and session saved under the app's old name
-/// (`~/.config/cosmic-commander`) to its current folder, once: only if the
-/// old folder exists and the new one doesn't. Call before loading anything.
+/// Moves the settings, favorites and session saved under one of the app's old
+/// names (`~/.config/pa2` or `~/.config/cosmic-commander`) to its current
+/// folder, once: only if the new one doesn't exist yet, taking the newest old
+/// folder there is. Call before loading anything.
 pub fn migrate_legacy_config() {
     if let Err(err) = migrate_in(&config_base()) {
         eprintln!("failed to move the old settings folder: {err}");
@@ -179,9 +181,15 @@ pub fn migrate_legacy_config() {
 }
 
 fn migrate_in(base: &Path) -> std::io::Result<()> {
-    let old = base.join(LEGACY_APP_DIR);
     let new = base.join(APP_DIR);
-    if old.is_dir() && !new.exists() {
+    if new.exists() {
+        return Ok(());
+    }
+    let old = LEGACY_APP_DIRS
+        .iter()
+        .map(|name| base.join(name))
+        .find(|old| old.is_dir());
+    if let Some(old) = old {
         fs::rename(old, new)?;
     }
     Ok(())
@@ -243,14 +251,19 @@ mod tests {
     #[test]
     fn font_sizes_get_smaller_and_default_matches_libcosmic() {
         assert_eq!(FontSize::Default.px(), 14);
-        let sizes = [FontSize::Default, FontSize::Small, FontSize::Smaller, FontSize::Tiny];
+        let sizes = [
+            FontSize::Default,
+            FontSize::Small,
+            FontSize::Smaller,
+            FontSize::Tiny,
+        ];
         assert!(sizes.windows(2).all(|pair| pair[0].px() > pair[1].px()));
     }
 
     #[test]
     fn moves_the_old_config_folder_once() {
         let base = tempfile::tempdir().unwrap();
-        let old = base.path().join(LEGACY_APP_DIR);
+        let old = base.path().join(LEGACY_APP_DIRS[1]);
         fs::create_dir(&old).unwrap();
         fs::write(old.join("favorites.json"), b"[]").unwrap();
 
@@ -264,6 +277,21 @@ mod tests {
         fs::write(old.join("favorites.json"), b"stale").unwrap();
         migrate_in(base.path()).unwrap();
         assert_eq!(fs::read(new.join("favorites.json")).unwrap(), b"[]");
+    }
+
+    #[test]
+    fn prefers_the_newest_old_config_folder() {
+        let base = tempfile::tempdir().unwrap();
+        for (name, content) in [("pa2", "newest"), ("cosmic-commander", "oldest")] {
+            let old = base.path().join(name);
+            fs::create_dir(&old).unwrap();
+            fs::write(old.join("favorites.json"), content).unwrap();
+        }
+
+        migrate_in(base.path()).unwrap();
+        let new = base.path().join(APP_DIR);
+        assert_eq!(fs::read(new.join("favorites.json")).unwrap(), b"newest");
+        assert!(!base.path().join("pa2").exists());
     }
 
     #[test]

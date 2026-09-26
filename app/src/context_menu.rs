@@ -28,8 +28,16 @@ pub fn item_menu(
             "system-run-symbolic",
             Action::OpenWith,
         ));
-        items.push(button(fl!("view"), "document-viewer-symbolic", Action::View));
-        items.push(button(fl!("edit"), "accessories-text-editor-symbolic", Action::Edit));
+        items.push(button(
+            fl!("view"),
+            "document-viewer-symbolic",
+            Action::View,
+        ));
+        items.push(button(
+            fl!("edit"),
+            "accessories-text-editor-symbolic",
+            Action::Edit,
+        ));
     } else {
         items.push(button(
             fl!("calculate-size"),
@@ -52,7 +60,11 @@ pub fn item_menu(
         },
         MenuItem::Divider,
         button(fl!("rename-ellipsis"), "edit-symbolic", Action::Rename),
-        button(fl!("compress-ellipsis"), "package-x-generic-symbolic", Action::Compress),
+        button(
+            fl!("compress-ellipsis"),
+            "package-x-generic-symbolic",
+            Action::Compress,
+        ),
         MenuItem::Divider,
         button(fl!("delete"), "user-trash-symbolic", Action::Delete),
         MenuItem::Divider,

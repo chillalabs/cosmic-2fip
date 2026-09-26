@@ -78,7 +78,10 @@ mod tests {
         }
 
         assert!(matches!(events.last(), Some(OpEvent::Done)));
-        assert_eq!(std::fs::read(dest_dir.path().join("a.txt")).unwrap(), b"hello");
+        assert_eq!(
+            std::fs::read(dest_dir.path().join("a.txt")).unwrap(),
+            b"hello"
+        );
     }
 
     #[tokio::test]
@@ -153,7 +156,10 @@ mod tests {
             events.push(event);
         }
         assert!(matches!(events.last(), Some(OpEvent::Done)));
-        assert_eq!(std::fs::read(dest_dir.path().join("a.txt")).unwrap(), b"new");
+        assert_eq!(
+            std::fs::read(dest_dir.path().join("a.txt")).unwrap(),
+            b"new"
+        );
     }
 
     #[tokio::test]
@@ -172,7 +178,10 @@ mod tests {
             conflict.clone(),
         );
 
-        assert!(matches!(stream.next().await, Some(OpEvent::Conflict { .. })));
+        assert!(matches!(
+            stream.next().await,
+            Some(OpEvent::Conflict { .. })
+        ));
         conflict.respond(ConflictResolution::Skip);
 
         let mut events = Vec::new();
@@ -181,7 +190,10 @@ mod tests {
         }
         assert!(matches!(events.last(), Some(OpEvent::Done)));
         // Left untouched, since the user chose to skip it.
-        assert_eq!(std::fs::read(dest_dir.path().join("a.txt")).unwrap(), b"old");
+        assert_eq!(
+            std::fs::read(dest_dir.path().join("a.txt")).unwrap(),
+            b"old"
+        );
     }
 
     #[tokio::test]
@@ -201,7 +213,10 @@ mod tests {
             events.push(event);
         }
 
-        assert!(matches!(events.last(), Some(OpEvent::Error(_))), "events: {events:?}");
+        assert!(
+            matches!(events.last(), Some(OpEvent::Error(_))),
+            "events: {events:?}"
+        );
         assert_eq!(std::fs::read(&file).unwrap(), b"precious");
     }
 }

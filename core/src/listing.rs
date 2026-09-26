@@ -27,13 +27,10 @@ pub async fn list_dir(path: &Path) -> Result<Vec<DirEntry>, FsError> {
         })?
     {
         let entry_path = entry.path();
-        let metadata = entry
-            .metadata()
-            .await
-            .map_err(|source| FsError::Metadata {
-                path: entry_path.clone(),
-                source,
-            })?;
+        let metadata = entry.metadata().await.map_err(|source| FsError::Metadata {
+            path: entry_path.clone(),
+            source,
+        })?;
 
         let kind = if metadata.is_symlink() {
             EntryKind::Symlink
@@ -79,7 +76,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_dir_errors() {
-        let missing = std::path::PathBuf::from("/nonexistent/pa2-test-path");
+        let missing = std::path::PathBuf::from("/nonexistent/2fip-test-path");
         assert!(list_dir(&missing).await.is_err());
     }
 

@@ -1,4 +1,4 @@
-# pa2 — Español (Latinoamérica)
+# 2fip — Español (Latinoamérica)
 # Traducción completa. El español de España (i18n/es) solo redefine las
 # claves que cambian; el resto se toma de este archivo.
 
@@ -85,7 +85,7 @@ settings-language = Idioma
 language-system = Predeterminado del sistema
 settings-theme = Tema
 settings-color-theme = Tema de colores
-settings-color-theme-description = Solo afecta a pa2; Sistema sigue la apariencia de COSMIC
+settings-color-theme-description = Solo afecta a 2fip; Sistema sigue la apariencia de COSMIC
 color-theme-system = Sistema
 color-theme-light = Claro
 color-theme-dark = Oscuro

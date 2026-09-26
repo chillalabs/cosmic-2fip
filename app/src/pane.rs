@@ -11,13 +11,13 @@ use cosmic::Element;
 use crate::app::{Message, PaneId};
 use crate::context_menu::item_menu;
 use crate::dnd::FileList;
-use cosmic::iced::clipboard::dnd::DndAction;
-use fs_ops::settings::{FontSize, ViewMode};
 use crate::file_item::{format_size, Column, FileItem, ListingOptions};
 use crate::fl;
 use crate::keybinds::Action;
 use crate::launch::open_with_default_app;
 use crate::tab::{tab_label, DirSize, PendingSelect, TabState};
+use cosmic::iced::clipboard::dnd::DndAction;
+use fs_ops::settings::{FontSize, ViewMode};
 
 pub type TabId = segmented_button::Entity;
 
@@ -68,7 +68,10 @@ pub enum PaneMessage {
     DirSizeReady(TabId, PathBuf, Option<u64>),
     /// Home / End (`last`): jump to the first / last row; `extend` when Shift
     /// is held (select from the anchor to there).
-    SelectEdge { last: bool, extend: bool },
+    SelectEdge {
+        last: bool,
+        extend: bool,
+    },
     /// Right-click: selects the item unless it's already part of the
     /// selection, so context-menu actions apply to what was clicked.
     EntryRightClicked(table::Entity),
@@ -77,7 +80,10 @@ pub enum PaneMessage {
     /// A drag entered a drop area (a folder, or the listing's own folder).
     DropHover(PathBuf),
     /// A drag left the drop area for `dest`.
-    DropLeave { dest: PathBuf, is_folder: bool },
+    DropLeave {
+        dest: PathBuf,
+        is_folder: bool,
+    },
     /// Files dropped (drag and drop) into `dest`; `is_move` when the drag
     /// negotiated a move. Handled by the app, not the pane.
     DropFiles {
@@ -278,7 +284,9 @@ impl PaneState {
                 let tasks: Vec<_> = folders
                     .into_iter()
                     .map(|path| {
-                        tab_state.dir_sizes.insert(path.clone(), DirSize::Calculating);
+                        tab_state
+                            .dir_sizes
+                            .insert(path.clone(), DirSize::Calculating);
                         cosmic::task::future(async move {
                             let size = fs_ops::details::details(vec![path.clone()])
                                 .await
@@ -384,12 +392,15 @@ impl PaneState {
             }
             PaneMessage::FilterChanged(text) => {
                 let options = self.options.clone();
-                let selected = self.tabs.active_data_mut::<TabState>().and_then(|tab_state| {
-                    tab_state.filter = Some(text);
-                    tab_state.rebuild(&options);
-                    // Keep a row selected so Enter / arrows act on a match.
-                    tab_state.ensure_selection()
-                });
+                let selected = self
+                    .tabs
+                    .active_data_mut::<TabState>()
+                    .and_then(|tab_state| {
+                        tab_state.filter = Some(text);
+                        tab_state.rebuild(&options);
+                        // Keep a row selected so Enter / arrows act on a match.
+                        tab_state.ensure_selection()
+                    });
                 self.scroll_to_row(selected)
             }
             PaneMessage::CloseFilter => {
@@ -707,12 +718,11 @@ impl PaneState {
             cosmic::task::future(async move {
                 let _permit = thumbnail_workers().acquire().await.ok();
                 let path = key.0.clone();
-                let thumbnail = tokio::task::spawn_blocking(move || {
-                    fs_ops::thumbnail::thumbnail(&path, &mime)
-                })
-                .await
-                .ok()
-                .flatten();
+                let thumbnail =
+                    tokio::task::spawn_blocking(move || fs_ops::thumbnail::thumbnail(&path, &mime))
+                        .await
+                        .ok()
+                        .flatten();
                 Message::Pane(pane, PaneMessage::ThumbnailReady(key, thumbnail))
             })
         });
@@ -926,7 +936,11 @@ impl PaneState {
     /// The path bar: clickable breadcrumbs (one button per folder, highlighted
     /// on hover), or a text box while editing. Clicking the bar's empty space
     /// or the pencil starts editing.
-    fn path_bar<'a>(&'a self, tab_state: Option<&'a TabState>, is_active: bool) -> Element<'a, PaneMessage> {
+    fn path_bar<'a>(
+        &'a self,
+        tab_state: Option<&'a TabState>,
+        is_active: bool,
+    ) -> Element<'a, PaneMessage> {
         if let Some(text) = &self.path_edit {
             let input = widget::text_input(fl!("path-placeholder"), text.as_str())
                 .id(self.path_input_id.clone())
@@ -979,10 +993,7 @@ impl PaneState {
 
         let bar = widget::Row::new()
             .align_y(cosmic::iced::Alignment::Center)
-            .push(
-                widget::scrollable::horizontal(crumbs)
-                    .width(Length::Fill),
-            )
+            .push(widget::scrollable::horizontal(crumbs).width(Length::Fill))
             .push(
                 widget::button::icon(widget::icon::from_name("pencil-symbolic"))
                     .class(path_button_class(is_active))
@@ -1082,7 +1093,9 @@ fn selection_class(selected: bool, drop_hover: bool) -> cosmic::theme::Container
         widget::container::Style {
             icon_color: Some(cosmic.on_accent_color().into()),
             text_color: Some(cosmic.on_accent_color().into()),
-            background: Some(cosmic::iced::Background::Color(cosmic.accent_color().into())),
+            background: Some(cosmic::iced::Background::Color(
+                cosmic.accent_color().into(),
+            )),
             border: cosmic::iced::Border {
                 radius: cosmic.radius_s().into(),
                 ..Default::default()
@@ -1278,7 +1291,13 @@ fn grid_view<'a>(
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
         let entry = widget::context_menu(area, item_menu(keybinds, item, can_paste));
-        cells.push(draggable_entry(entry, pane, tab_state, item, DragLook::Tile));
+        cells.push(draggable_entry(
+            entry,
+            pane,
+            tab_state,
+            item,
+            DragLook::Tile,
+        ));
     }
 
     // Plain rows of fixed-size cells: predictable spacing (a flex layout
@@ -1405,7 +1424,7 @@ fn drag_picture(
     )
 }
 
-/// A drop zone for files (from pa2 or another app) that go into `dest`.
+/// A drop zone for files (from 2fip or another app) that go into `dest`.
 fn drop_target<'a>(
     content: impl Into<Element<'a, PaneMessage>>,
     dest: PathBuf,
@@ -1531,8 +1550,14 @@ mod tests {
         assert_eq!(resolve("/etc"), PathBuf::from("/etc"));
         assert_eq!(resolve("  /etc/  "), PathBuf::from("/etc"));
         assert_eq!(resolve("~"), PathBuf::from("/home/user"));
-        assert_eq!(resolve("~/Downloads"), PathBuf::from("/home/user/Downloads"));
-        assert_eq!(resolve("app/src"), PathBuf::from("/home/user/projects/app/src"));
+        assert_eq!(
+            resolve("~/Downloads"),
+            PathBuf::from("/home/user/Downloads")
+        );
+        assert_eq!(
+            resolve("app/src"),
+            PathBuf::from("/home/user/projects/app/src")
+        );
         assert_eq!(resolve(".."), PathBuf::from("/home/user"));
         assert_eq!(resolve("/usr/./lib/../share"), PathBuf::from("/usr/share"));
         assert_eq!(resolve("/.."), PathBuf::from("/"));

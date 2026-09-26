@@ -1,4 +1,4 @@
-//! Color themes pa2 can use instead of the desktop's (Settings → Theme).
+//! Color themes 2fip can use instead of the desktop's (Settings → Theme).
 //! Each is a small palette; libcosmic's `ThemeBuilder` derives every widget
 //! color (buttons, menus, hover and selection states) from it.
 
@@ -27,7 +27,7 @@ struct Palette {
     destructive: u32,
 }
 
-/// The palette of each of pa2's own themes; `None` for the ones that use
+/// The palette of each of 2fip's own themes; `None` for the ones that use
 /// libcosmic's (System, Light, Dark).
 fn palette(theme: ColorTheme) -> Option<Palette> {
     let palette = match theme {
@@ -180,7 +180,7 @@ fn palette(theme: ColorTheme) -> Option<Palette> {
     Some(palette)
 }
 
-/// The libcosmic theme for one of pa2's own palettes (`None` for System,
+/// The libcosmic theme for one of 2fip's own palettes (`None` for System,
 /// Light and Dark, which the caller takes from libcosmic).
 pub fn build(theme: ColorTheme) -> Option<cosmic::Theme> {
     let p = palette(theme)?;

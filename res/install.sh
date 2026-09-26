@@ -1,14 +1,14 @@
 #!/bin/sh
-# Installs (or removes, with --uninstall) pa2 for the current
+# Installs (or removes, with --uninstall) 2fip for the current
 # user: binary in ~/.local/bin, launcher entry and icon in ~/.local/share.
 # Run from the unpacked package folder, or via `just install` from the repo.
 set -eu
 
-APP_ID=io.github.gonzaloism.pa2
+APP_ID=io.github.gonzaloism.TwoFip
 PREFIX="${PREFIX:-$HOME/.local}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-BIN="$PREFIX/bin/pa2"
+BIN="$PREFIX/bin/2fip"
 DESKTOP="$PREFIX/share/applications/$APP_ID.desktop"
 ICON="$PREFIX/share/icons/hicolor/scalable/apps/$APP_ID.svg"
 
@@ -23,14 +23,14 @@ refresh() {
 if [ "${1:-}" = "--uninstall" ]; then
     rm -f "$BIN" "$DESKTOP" "$ICON"
     refresh
-    echo "pa2 removed."
-    echo "Your settings, favorites and session stay in ~/.config/pa2."
+    echo "2fip removed."
+    echo "Your settings, favorites and session stay in ~/.config/2fip."
     exit 0
 fi
 
 # Files as laid out in the package (bin/, share/); `just install` passes
 # SOURCE_* to install straight from the repository instead.
-SRC_BIN="${SOURCE_BIN:-$HERE/bin/pa2}"
+SRC_BIN="${SOURCE_BIN:-$HERE/bin/2fip}"
 SRC_DESKTOP="${SOURCE_DESKTOP:-$HERE/share/applications/$APP_ID.desktop}"
 SRC_ICON="${SOURCE_ICON:-$HERE/share/icons/hicolor/scalable/apps/$APP_ID.svg}"
 
@@ -43,8 +43,8 @@ sed "s|^Exec=.*|Exec=$BIN|" "$SRC_DESKTOP" > "$DESKTOP"
 chmod 644 "$DESKTOP"
 refresh
 
-echo "pa2 installed:"
+echo "2fip installed:"
 echo "  $BIN"
 echo "  $DESKTOP"
 echo "  $ICON"
-echo "Open it from the app launcher (search \"pa2\")."
+echo "Open it from the app launcher (search \"2fip\")."

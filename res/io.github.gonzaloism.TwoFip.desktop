@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=pa2
+Name=2fip
 GenericName=File Manager
 Comment=Dual-pane file manager in the style of Total Commander
-Exec=pa2
-Icon=io.github.gonzaloism.pa2
+Exec=2fip
+Icon=io.github.gonzaloism.TwoFip
 Terminal=false
 StartupNotify=true
-StartupWMClass=io.github.gonzaloism.pa2
+StartupWMClass=io.github.gonzaloism.TwoFip
 Categories=System;FileTools;FileManager;
-Keywords=files;folders;file manager;commander;dual pane;pa2;
+Keywords=files;folders;file manager;commander;dual pane;2fip;2 file panel;pa2;
