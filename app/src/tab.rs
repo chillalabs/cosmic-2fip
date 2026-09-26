@@ -178,6 +178,23 @@ impl TabState {
         })
     }
 
+    /// Whether the entry at `path` is selected.
+    pub fn selected_contains(&self, path: &Path) -> bool {
+        self.entries
+            .active()
+            .filter_map(|entity| self.entries.item(entity))
+            .any(|item| item.path == path)
+    }
+
+    /// Paths of all selected entries.
+    pub fn selected_paths(&self) -> Vec<PathBuf> {
+        self.entries
+            .active()
+            .filter_map(|entity| self.entries.item(entity))
+            .map(|item| item.path.clone())
+            .collect()
+    }
+
     /// Selects only `entity`, clearing any other selection; it becomes both
     /// the anchor and the cursor.
     pub fn select_only(&mut self, entity: table::Entity) {

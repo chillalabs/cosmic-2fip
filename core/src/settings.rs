@@ -21,6 +21,37 @@ pub struct Settings {
     /// List view: show the extension in its own "Ext" column (like Total
     /// Commander) instead of as part of the name.
     pub separate_extension: bool,
+    /// pa2's colors: the desktop's theme, or one of pa2's own.
+    pub color_theme: ColorTheme,
+}
+
+/// pa2's color theme (only this app; the desktop keeps its own). Saved as
+/// kebab-case names ("tokyo-night-storm"); the one-word names are unchanged
+/// from earlier versions ("system", "dracula").
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ColorTheme {
+    /// Follow COSMIC's appearance (light/dark, accent color).
+    #[default]
+    System,
+    /// COSMIC's standard light theme, whatever the desktop uses.
+    Light,
+    /// COSMIC's standard dark theme, whatever the desktop uses.
+    Dark,
+    /// The Dracula palette (dark).
+    Dracula,
+    Everforest,
+    GruvboxMaterial,
+    Nord,
+    TokyoNightStorm,
+    CatppuccinMocha,
+    CatppuccinMacchiato,
+    AyuDark,
+    /// Green-on-black.
+    Matrix,
+    MonokaiPro,
+    SolarizedDark,
+    GruvboxDark,
 }
 
 /// Text size for file and folder names; smaller sizes fit more files on
@@ -79,6 +110,7 @@ impl Default for Settings {
             show_thumbnails: true,
             name_font_size: FontSize::default(),
             separate_extension: true,
+            color_theme: ColorTheme::default(),
         }
     }
 }
@@ -184,6 +216,7 @@ mod tests {
             show_thumbnails: false,
             name_font_size: FontSize::Smaller,
             separate_extension: false,
+            color_theme: ColorTheme::Dracula,
         };
 
         save_to(&path, &settings).unwrap();
@@ -204,6 +237,7 @@ mod tests {
         assert_eq!(loaded.icon_style, IconStyle::Colorful);
         assert_eq!(loaded.name_font_size, FontSize::Default);
         assert!(loaded.separate_extension);
+        assert_eq!(loaded.color_theme, ColorTheme::System);
     }
 
     #[test]
@@ -230,6 +264,14 @@ mod tests {
         fs::write(old.join("favorites.json"), b"stale").unwrap();
         migrate_in(base.path()).unwrap();
         assert_eq!(fs::read(new.join("favorites.json")).unwrap(), b"[]");
+    }
+
+    #[test]
+    fn color_themes_are_saved_by_name() {
+        let saved = serde_json::to_string(&ColorTheme::TokyoNightStorm).unwrap();
+        assert_eq!(saved, "\"tokyo-night-storm\"");
+        let old: ColorTheme = serde_json::from_str("\"dracula\"").unwrap();
+        assert_eq!(old, ColorTheme::Dracula);
     }
 
     #[test]

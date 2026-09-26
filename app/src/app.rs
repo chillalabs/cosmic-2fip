@@ -17,7 +17,7 @@ use fs_ops::details::Details;
 use fs_ops::favorites::Favorite;
 use fs_ops::ops::{CancelHandle, ConflictHandle, ConflictResolution, OpEvent};
 use fs_ops::session::Session;
-use fs_ops::settings::{FontSize, IconStyle, Settings, ViewMode};
+use fs_ops::settings::{ColorTheme, FontSize, IconStyle, Settings, ViewMode};
 use fs_ops::user_dirs::UserDir;
 use fs_ops::EntryKind;
 
@@ -25,6 +25,7 @@ use crate::file_item::{format_modified, format_size, ListingOptions};
 use crate::keybinds::{default_keybinds, Action};
 use crate::launch::{self, open_with_default_app, AppEntry, OpenMode};
 use crate::localize;
+use crate::themes;
 use crate::fl;
 use crate::menu_bar::menu_bar;
 use crate::operation::{OpKind, OperationState};
@@ -58,6 +59,8 @@ pub enum Message {
     ExitNow,
     /// Escape that a focused widget (e.g. the quick filter box) consumed.
     EscapeCaptured,
+    /// A click on a pane's empty space: make it the active pane.
+    ActivatePane(PaneId),
     ModifiersChanged(Modifiers),
     ConfirmDelete,
     CancelDelete,
@@ -96,6 +99,12 @@ pub enum Message {
     IconStyleSelected(usize),
     /// Index into [`FONT_SIZES`].
     FontSizeSelected(usize),
+    /// Index into [`COLOR_THEMES`].
+    ColorThemeSelected(usize),
+    /// A click on a Settings row: give it the keyboard focus.
+    FocusSettingsRow(SettingsRow),
+    /// A click on a favorite: highlight it for the keyboard.
+    FocusFavorite(usize),
     CloseDrawer,
 }
 
@@ -109,6 +118,74 @@ const FONT_SIZES: [FontSize; 4] = [
     FontSize::Smaller,
     FontSize::Tiny,
 ];
+
+/// The Settings panel's rows, top to bottom, for keyboard navigation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsRow {
+    HideHidden,
+    SeparateExtension,
+    Thumbnails,
+    Language,
+    ColorTheme,
+    IconStyle,
+    FontSize,
+}
+
+const SETTINGS_ROWS: [SettingsRow; 7] = [
+    SettingsRow::HideHidden,
+    SettingsRow::SeparateExtension,
+    SettingsRow::Thumbnails,
+    SettingsRow::Language,
+    SettingsRow::ColorTheme,
+    SettingsRow::IconStyle,
+    SettingsRow::FontSize,
+];
+
+/// `index` moved by `step` (±1) within `len` options, wrapping around.
+fn step_index(index: usize, step: isize, len: usize) -> usize {
+    (index as isize + step).rem_euclid(len as isize) as usize
+}
+
+/// Color themes offered in Settings, in dropdown order.
+const COLOR_THEMES: [ColorTheme; 15] = [
+    ColorTheme::System,
+    ColorTheme::Light,
+    ColorTheme::Dark,
+    // pa2's own palettes, alphabetically.
+    ColorTheme::AyuDark,
+    ColorTheme::CatppuccinMacchiato,
+    ColorTheme::CatppuccinMocha,
+    ColorTheme::Dracula,
+    ColorTheme::Everforest,
+    ColorTheme::GruvboxDark,
+    ColorTheme::GruvboxMaterial,
+    ColorTheme::Matrix,
+    ColorTheme::MonokaiPro,
+    ColorTheme::Nord,
+    ColorTheme::SolarizedDark,
+    ColorTheme::TokyoNightStorm,
+];
+
+fn color_theme_name(theme: ColorTheme) -> String {
+    match theme {
+        ColorTheme::System => fl!("color-theme-system"),
+        ColorTheme::Light => fl!("color-theme-light"),
+        ColorTheme::Dark => fl!("color-theme-dark"),
+        // Proper names: the same in every language.
+        ColorTheme::Dracula => "Dracula".to_string(),
+        ColorTheme::Everforest => "Everforest".to_string(),
+        ColorTheme::GruvboxMaterial => "Gruvbox Material".to_string(),
+        ColorTheme::Nord => "Nord".to_string(),
+        ColorTheme::TokyoNightStorm => "Tokyo Night Storm".to_string(),
+        ColorTheme::CatppuccinMocha => "Catppuccin Mocha".to_string(),
+        ColorTheme::CatppuccinMacchiato => "Catppuccin Macchiato".to_string(),
+        ColorTheme::AyuDark => "Ayu Dark".to_string(),
+        ColorTheme::Matrix => "Matrix".to_string(),
+        ColorTheme::MonokaiPro => "Monokai Pro".to_string(),
+        ColorTheme::SolarizedDark => "Solarized Dark".to_string(),
+        ColorTheme::GruvboxDark => "Gruvbox Dark".to_string(),
+    }
+}
 
 /// Icon styles offered in Settings, in dropdown order.
 const ICON_STYLES: [IconStyle; 2] = [IconStyle::Colorful, IconStyle::Monochrome];
@@ -206,6 +283,12 @@ pub struct App {
     /// The favorite highlighted for keyboard use (↑/↓ to move, Enter to open)
     /// while the Favorites panel is open.
     favorite_cursor: Option<usize>,
+    /// The Favorites panel's "Add current folder" name field has the keyboard
+    /// (reached with ↓/Tab after the last favorite).
+    favorite_name_focused: bool,
+    favorite_name_input: widget::Id,
+    /// The Settings row with keyboard focus (index into [`SETTINGS_ROWS`]).
+    settings_cursor: usize,
     clipboard: Option<Clipboard>,
     compress: Option<CompressState>,
     open_with: Option<OpenWithState>,
@@ -241,21 +324,49 @@ impl App {
                 self.set_active_pane(id);
                 self.handle_action(action)
             }
+            Message::Pane(
+                id,
+                PaneMessage::DropFiles {
+                    dest,
+                    paths,
+                    is_move,
+                },
+            ) => {
+                self.set_active_pane(id);
+                self.left.clear_drop_hover();
+                self.right.clear_drop_hover();
+                self.drop_files(dest, paths, is_move)
+            }
             Message::Pane(id, msg) => {
                 // A listing finishing its load isn't the user picking that
-                // pane (after an operation both panes reload in the background).
-                if !matches!(msg, PaneMessage::DirLoaded(..)) {
+                // pane (after an operation both panes reload in the background),
+                // and neither is a drag passing over it.
+                if !matches!(
+                    msg,
+                    PaneMessage::DirLoaded(..)
+                        | PaneMessage::DropHover(..)
+                        | PaneMessage::DropLeave { .. }
+                ) {
                     self.set_active_pane(id);
                 }
                 self.pane_mut(id).update(msg)
             }
             Message::Action(action) => self.handle_action(action),
             Message::ExitNow => self.exit_now(),
+            Message::ActivatePane(id) => {
+                self.set_active_pane(id);
+                Task::none()
+            }
             Message::EscapeCaptured => {
                 // Text boxes swallow Escape; still let one press close the
-                // dialog they're in (e.g. Rename), the path editor or the filter.
+                // dialog they're in (e.g. Rename), the side panel (e.g. the
+                // Favorites name field), the path editor or the filter.
                 if self.dialog_open() {
                     return self.on_escape();
+                }
+                if self.drawer.is_some() {
+                    self.close_drawer();
+                    return Task::none();
                 }
                 if !self.pane_mut(self.active_pane).cancel_path_edit()
                     && self.pane(self.active_pane).filter_open()
@@ -315,9 +426,23 @@ impl App {
                 if let Some(task) = self.favorites_key(modifiers, &key) {
                     return task;
                 }
+                if let Some(task) = self.settings_key(modifiers, &key) {
+                    return task;
+                }
                 let action = self.keybinds.iter().find_map(|(bind, action)| {
                     bind.matches(modifiers, &key, None).then_some(*action)
                 });
+                // A side panel keeps the keyboard: keys it doesn't use must not
+                // reach the file panels behind it (e.g. Delete trashing files).
+                // Only the shortcuts that switch panels or quit still work.
+                if self.drawer.is_some()
+                    && !matches!(
+                        action,
+                        Some(Action::Favorites | Action::Settings | Action::Quit)
+                    )
+                {
+                    return Task::none();
+                }
                 match action {
                     Some(action) => self.handle_action(action),
                     None => Task::none(),
@@ -559,16 +684,22 @@ impl App {
                 self.details = None;
                 Task::none()
             }
-            Message::HideHiddenFilesToggled(hide) => self.set_hide_hidden_files(hide),
+            Message::HideHiddenFilesToggled(hide) => {
+                self.focus_settings_row(SettingsRow::HideHidden);
+                self.set_hide_hidden_files(hide)
+            }
             Message::SeparateExtensionToggled(separate) => {
+                self.focus_settings_row(SettingsRow::SeparateExtension);
                 self.settings.separate_extension = separate;
                 self.apply_settings()
             }
             Message::ThumbnailsToggled(show) => {
+                self.focus_settings_row(SettingsRow::Thumbnails);
                 self.settings.show_thumbnails = show;
                 self.apply_settings()
             }
             Message::LanguageSelected(index) => {
+                self.focus_settings_row(SettingsRow::Language);
                 if let Some((code, _)) = localize::LANGUAGES.get(index) {
                     self.settings.language = code.to_string();
                     // Every view reads its text through `fl!`, so the next
@@ -578,7 +709,26 @@ impl App {
                 }
                 Task::none()
             }
+            Message::FocusFavorite(index) => {
+                self.favorite_cursor = Some(index);
+                self.favorite_name_focused = false;
+                unfocus_text_fields()
+            }
+            Message::FocusSettingsRow(row) => {
+                self.focus_settings_row(row);
+                Task::none()
+            }
+            Message::ColorThemeSelected(index) => {
+                self.focus_settings_row(SettingsRow::ColorTheme);
+                if let Some(theme) = COLOR_THEMES.get(index) {
+                    self.settings.color_theme = *theme;
+                    self.persist_settings();
+                    return self.apply_color_theme();
+                }
+                Task::none()
+            }
             Message::FontSizeSelected(index) => {
+                self.focus_settings_row(SettingsRow::FontSize);
                 if let Some(size) = FONT_SIZES.get(index) {
                     self.settings.name_font_size = *size;
                     return self.apply_settings();
@@ -586,6 +736,7 @@ impl App {
                 Task::none()
             }
             Message::IconStyleSelected(index) => {
+                self.focus_settings_row(SettingsRow::IconStyle);
                 if let Some(style) = ICON_STYLES.get(index) {
                     self.settings.icon_style = *style;
                     return self.apply_settings();
@@ -872,6 +1023,18 @@ impl App {
         self.apply_settings()
     }
 
+    /// Switches pa2's colors to the chosen theme; "System" goes back to the
+    /// desktop's current theme (libcosmic keeps it up to date meanwhile).
+    fn apply_color_theme(&self) -> Task<Message> {
+        let theme = match self.settings.color_theme {
+            ColorTheme::System => self.core.system_theme().clone(),
+            ColorTheme::Light => cosmic::Theme::light(),
+            ColorTheme::Dark => cosmic::Theme::dark(),
+            own => themes::build(own).unwrap_or_else(cosmic::Theme::dark),
+        };
+        cosmic::command::set_theme(theme)
+    }
+
     fn persist_settings(&self) {
         if let Err(err) = fs_ops::settings::save(&self.settings) {
             eprintln!("failed to save settings: {err}");
@@ -885,7 +1048,11 @@ impl App {
         } else {
             self.drawer = Some(page);
             self.core.set_show_context(true);
+            if page == DrawerPage::Settings {
+                self.settings_cursor = 0;
+            }
             if page == DrawerPage::Favorites {
+                self.favorite_name_focused = false;
                 // Start on the current folder's favorite, if it has one.
                 let current = self.pane(self.active_pane).current_dir();
                 self.favorite_cursor = self
@@ -895,6 +1062,148 @@ impl App {
                     .or((!self.favorites.is_empty()).then_some(0));
             }
         }
+    }
+
+    /// While the Settings panel is open it has the keyboard: Tab/↓ and
+    /// Shift+Tab/↑ move between settings, Space/Enter toggle a checkbox (or
+    /// pick the next option), →/← pick the next/previous option. Returns
+    /// `None` for other keys (e.g. Escape closes the panel as usual).
+    fn settings_key(&mut self, modifiers: Modifiers, key: &Key) -> Option<Task<Message>> {
+        if self.drawer != Some(DrawerPage::Settings) {
+            return None;
+        }
+        let rows = SETTINGS_ROWS.len();
+        let plain = modifiers.is_empty();
+        let row = SETTINGS_ROWS[self.settings_cursor.min(rows - 1)];
+        match key {
+            Key::Named(Named::Tab) if plain => {
+                self.settings_cursor = step_index(self.settings_cursor, 1, rows);
+            }
+            Key::Named(Named::Tab) if modifiers == Modifiers::SHIFT => {
+                self.settings_cursor = step_index(self.settings_cursor, -1, rows);
+            }
+            Key::Named(Named::ArrowDown) if plain => {
+                self.settings_cursor = step_index(self.settings_cursor, 1, rows);
+            }
+            Key::Named(Named::ArrowUp) if plain => {
+                self.settings_cursor = step_index(self.settings_cursor, -1, rows);
+            }
+            Key::Named(Named::ArrowRight | Named::Enter) if plain => {
+                return Some(self.change_setting(row, 1));
+            }
+            Key::Character(c) if plain && c.as_str() == " " => {
+                return Some(self.change_setting(row, 1));
+            }
+            Key::Named(Named::ArrowLeft) if plain => return Some(self.change_setting(row, -1)),
+            _ => return None,
+        }
+        Some(Task::none())
+    }
+
+    /// Moves the Settings keyboard focus to `row`.
+    fn focus_settings_row(&mut self, row: SettingsRow) {
+        if let Some(index) = SETTINGS_ROWS.iter().position(|r| *r == row) {
+            self.settings_cursor = index;
+        }
+    }
+
+    /// Toggles a checkbox setting, or moves a list setting `step` options.
+    fn change_setting(&mut self, row: SettingsRow, step: isize) -> Task<Message> {
+        let message = match row {
+            SettingsRow::HideHidden => {
+                Message::HideHiddenFilesToggled(!self.settings.hide_hidden_files)
+            }
+            SettingsRow::SeparateExtension => {
+                Message::SeparateExtensionToggled(!self.settings.separate_extension)
+            }
+            SettingsRow::Thumbnails => Message::ThumbnailsToggled(!self.settings.show_thumbnails),
+            SettingsRow::Language => {
+                let current = localize::LANGUAGES
+                    .iter()
+                    .position(|(code, _)| *code == self.settings.language)
+                    .unwrap_or(0);
+                Message::LanguageSelected(step_index(current, step, localize::LANGUAGES.len()))
+            }
+            SettingsRow::ColorTheme => {
+                let current = COLOR_THEMES
+                    .iter()
+                    .position(|theme| *theme == self.settings.color_theme)
+                    .unwrap_or(0);
+                Message::ColorThemeSelected(step_index(current, step, COLOR_THEMES.len()))
+            }
+            SettingsRow::IconStyle => {
+                let current = ICON_STYLES
+                    .iter()
+                    .position(|style| *style == self.settings.icon_style)
+                    .unwrap_or(0);
+                Message::IconStyleSelected(step_index(current, step, ICON_STYLES.len()))
+            }
+            SettingsRow::FontSize => {
+                let current = FONT_SIZES
+                    .iter()
+                    .position(|size| *size == self.settings.name_font_size)
+                    .unwrap_or(0);
+                Message::FontSizeSelected(step_index(current, step, FONT_SIZES.len()))
+            }
+        };
+        self.update(message)
+    }
+
+    /// Wraps a Settings row, outlined in the accent color when it has the
+    /// keyboard focus.
+    fn settings_row<'a>(
+        &self,
+        row: SettingsRow,
+        content: impl Into<Element<'a, Message>>,
+    ) -> Element<'a, Message> {
+        let focused = SETTINGS_ROWS.get(self.settings_cursor) == Some(&row);
+        let framed = widget::container(content)
+            .padding(4)
+            .class(cosmic::theme::Container::custom(move |theme| {
+                if !focused {
+                    return widget::container::Style::default();
+                }
+                // A tinted background plus a border, so the focus stands out
+                // in every color theme.
+                let cosmic = theme.cosmic();
+                let accent: cosmic::iced::Color = cosmic.accent_color().into();
+                widget::container::Style {
+                    background: Some(cosmic::iced::Background::Color(cosmic::iced::Color {
+                        a: 0.18,
+                        ..accent
+                    })),
+                    border: cosmic::iced::Border {
+                        color: accent,
+                        width: 2.0,
+                        radius: cosmic.radius_s().into(),
+                    },
+                    ..Default::default()
+                }
+            }));
+        // A click on the row's title or description (anything that doesn't
+        // handle the click itself) moves the focus here.
+        widget::mouse_area(framed)
+            .on_press(Message::FocusSettingsRow(row))
+            .into()
+    }
+
+    /// A Settings checkbox row: the checkbox before the title and description
+    /// (like libcosmic's own checkbox rows), toggled by a click anywhere on
+    /// the row, with the keyboard focus outline.
+    fn checkbox_row<'a>(
+        &self,
+        row: SettingsRow,
+        title: String,
+        description: String,
+        checked: bool,
+        on_toggle: fn(bool) -> Message,
+    ) -> Element<'a, Message> {
+        let content = widget::settings::item::builder(title)
+            .description(description)
+            .icon(widget::checkbox(checked).on_toggle(on_toggle))
+            .control(widget::Space::new());
+        // The whole row toggles (and so also takes the focus, see `update`).
+        self.settings_row(row, widget::mouse_area(content).on_press(on_toggle(!checked)))
     }
 
     /// While the Favorites panel is open, ↑/↓ move its highlight and Enter
@@ -914,32 +1223,61 @@ impl App {
             let index = self.favorite_cursor?;
             return Some(self.update(Message::MoveFavorite(index, up)));
         }
-        if !modifiers.is_empty() {
+        let count = self.favorites.len();
+        let forward = match (key, modifiers) {
+            (Key::Named(Named::ArrowDown), m) if m.is_empty() => Some(true),
+            (Key::Named(Named::Tab), m) if m.is_empty() => Some(true),
+            (Key::Named(Named::ArrowUp), m) if m.is_empty() => Some(false),
+            (Key::Named(Named::Tab), m) if m == Modifiers::SHIFT => Some(false),
+            _ => None,
+        };
+        if let Some(forward) = forward {
+            return Some(self.move_favorite_focus(forward));
+        }
+        if !modifiers.is_empty() || self.favorite_name_focused {
+            // The name field handles its own typing (and Enter adds).
             return None;
         }
-        let last = self.favorites.len().checked_sub(1);
         match key {
-            Key::Named(Named::ArrowDown) => {
-                self.favorite_cursor = match (self.favorite_cursor, last) {
-                    (_, None) => None,
-                    (Some(cursor), Some(last)) => Some((cursor + 1).min(last)),
-                    (None, Some(_)) => Some(0),
-                };
+            Key::Named(Named::Home) if count > 0 => {
+                self.favorite_cursor = Some(0);
                 Some(Task::none())
             }
-            Key::Named(Named::ArrowUp) => {
-                self.favorite_cursor = match (self.favorite_cursor, last) {
-                    (_, None) => None,
-                    (Some(cursor), Some(_)) => Some(cursor.saturating_sub(1)),
-                    (None, Some(_)) => Some(0),
-                };
+            Key::Named(Named::End) if count > 0 => {
+                self.favorite_cursor = Some(count - 1);
                 Some(Task::none())
             }
             Key::Named(Named::Enter) => Some(match self.favorite_cursor {
                 Some(index) => self.update(Message::GoToFavorite(index)),
                 None => Task::none(),
             }),
+            Key::Named(Named::Delete) => Some(match self.favorite_cursor {
+                Some(index) => self.update(Message::RemoveFavorite(index)),
+                None => Task::none(),
+            }),
             _ => None,
+        }
+    }
+
+    /// Moves the Favorites keyboard focus one step: through the favorites,
+    /// then the "Add current folder" name field, wrapping around.
+    fn move_favorite_focus(&mut self, forward: bool) -> Task<Message> {
+        let count = self.favorites.len();
+        // Positions 0..count are favorites; `count` is the name field.
+        let current = if self.favorite_name_focused {
+            count
+        } else {
+            self.favorite_cursor.unwrap_or(count)
+        };
+        let target = step_index(current, if forward { 1 } else { -1 }, count + 1);
+        if target == count {
+            self.favorite_name_focused = true;
+            self.favorite_cursor = None;
+            widget::text_input::focus(self.favorite_name_input.clone())
+        } else {
+            self.favorite_name_focused = false;
+            self.favorite_cursor = Some(target);
+            unfocus_text_fields()
         }
     }
 
@@ -966,38 +1304,60 @@ impl App {
             .iter()
             .position(|style| *style == self.settings.icon_style);
         let font_size_names: Vec<String> = FONT_SIZES.into_iter().map(font_size_name).collect();
+        let color_theme_names: Vec<String> =
+            COLOR_THEMES.into_iter().map(color_theme_name).collect();
+        let selected_color_theme = COLOR_THEMES
+            .iter()
+            .position(|theme| *theme == self.settings.color_theme);
         let selected_font_size = FONT_SIZES
             .iter()
             .position(|size| *size == self.settings.name_font_size);
 
         let general = widget::settings::section()
             .title(fl!("settings-general"))
-            .add(
-                widget::settings::item::builder(fl!("settings-hide-hidden"))
-                    .description(fl!("settings-hide-hidden-description"))
-                    .checkbox(self.settings.hide_hidden_files, Message::HideHiddenFilesToggled),
-            )
-            .add(
-                widget::settings::item::builder(fl!("settings-separate-ext"))
-                    .description(fl!("settings-separate-ext-description"))
-                    .checkbox(
-                        self.settings.separate_extension,
-                        Message::SeparateExtensionToggled,
-                    ),
-            )
-            .add(
-                widget::settings::item::builder(fl!("settings-thumbnails"))
-                    .description(fl!("settings-thumbnails-description"))
-                    .checkbox(self.settings.show_thumbnails, Message::ThumbnailsToggled),
-            )
-            .add(widget::settings::item(
-                fl!("settings-language"),
-                widget::dropdown(language_names, selected_language, Message::LanguageSelected),
+            .add(self.checkbox_row(
+                SettingsRow::HideHidden,
+                fl!("settings-hide-hidden"),
+                fl!("settings-hide-hidden-description"),
+                self.settings.hide_hidden_files,
+                Message::HideHiddenFilesToggled,
+            ))
+            .add(self.checkbox_row(
+                SettingsRow::SeparateExtension,
+                fl!("settings-separate-ext"),
+                fl!("settings-separate-ext-description"),
+                self.settings.separate_extension,
+                Message::SeparateExtensionToggled,
+            ))
+            .add(self.checkbox_row(
+                SettingsRow::Thumbnails,
+                fl!("settings-thumbnails"),
+                fl!("settings-thumbnails-description"),
+                self.settings.show_thumbnails,
+                Message::ThumbnailsToggled,
+            ))
+            .add(self.settings_row(
+                SettingsRow::Language,
+                widget::settings::item(
+                    fl!("settings-language"),
+                    widget::dropdown(language_names, selected_language, Message::LanguageSelected),
+                ),
             ));
 
         let theme = widget::settings::section()
             .title(fl!("settings-theme"))
-            .add(
+            .add(self.settings_row(
+                SettingsRow::ColorTheme,
+                widget::settings::item::builder(fl!("settings-color-theme"))
+                    .description(fl!("settings-color-theme-description"))
+                    .control(widget::dropdown(
+                        color_theme_names,
+                        selected_color_theme,
+                        Message::ColorThemeSelected,
+                    )),
+            ))
+            .add(self.settings_row(
+                SettingsRow::IconStyle,
                 widget::settings::item::builder(fl!("settings-icon-style"))
                     .description(fl!("settings-icon-style-description"))
                     .control(widget::dropdown(
@@ -1005,8 +1365,9 @@ impl App {
                         selected_icon_style,
                         Message::IconStyleSelected,
                     )),
-            )
-            .add(
+            ))
+            .add(self.settings_row(
+                SettingsRow::FontSize,
                 widget::settings::item::builder(fl!("settings-font-size"))
                     .description(fl!("settings-font-size-description"))
                     .control(widget::dropdown(
@@ -1014,7 +1375,7 @@ impl App {
                         selected_font_size,
                         Message::FontSizeSelected,
                     )),
-            );
+            ));
 
         widget::settings::view_column(vec![general.into(), theme.into()]).into()
     }
@@ -1050,11 +1411,15 @@ impl App {
                 .control(buttons);
             let highlighted = self.favorite_cursor == Some(index);
             saved = saved.add(
-                widget::container(row)
-                    .padding([4, 8])
-                    .class(cosmic::theme::Container::custom(move |theme| {
-                        highlight_style(theme, highlighted)
-                    })),
+                // A click on the row (not its buttons) highlights it.
+                widget::mouse_area(
+                    widget::container(row)
+                        .padding([4, 8])
+                        .class(cosmic::theme::Container::custom(move |theme| {
+                            highlight_style(theme, highlighted)
+                        })),
+                )
+                .on_press(Message::FocusFavorite(index)),
             );
         }
 
@@ -1069,6 +1434,7 @@ impl App {
                         .align_y(Alignment::Center)
                         .push(
                             widget::text_input(tab_label(&current), self.favorite_name.as_str())
+                                .id(self.favorite_name_input.clone())
                                 .on_input(Message::FavoriteNameChanged)
                                 .on_submit(|_| Message::AddFavorite)
                                 .width(Length::Fill),
@@ -1078,6 +1444,28 @@ impl App {
         );
 
         widget::settings::view_column(vec![saved.into(), add.into()]).into()
+    }
+
+    /// Files dropped into `dest` (drag and drop, from pa2 or another app):
+    /// copied, or moved if the drag asked for it or Shift is held. Files
+    /// already in `dest`, and folders dropped into themselves, are skipped.
+    fn drop_files(&mut self, dest: PathBuf, paths: Vec<PathBuf>, is_move: bool) -> Task<Message> {
+        if self.operation.is_some() {
+            return Task::none();
+        }
+        let sources = drop_sources(&dest, paths);
+        if sources.is_empty() {
+            return Task::none();
+        }
+        if is_move || self.modifiers.shift() {
+            self.spawn_operation(OpKind::Move, |cancel, conflict| {
+                fs_ops::ops::move_paths(sources, dest, cancel, conflict)
+            })
+        } else {
+            self.spawn_operation(OpKind::Copy, |cancel, conflict| {
+                fs_ops::ops::copy(sources, dest, cancel, conflict)
+            })
+        }
     }
 
     /// Copies (or, after a Cut, moves) the clipboard's paths into the active
@@ -1290,6 +1678,9 @@ impl Application for App {
             favorites: fs_ops::favorites::load(),
             favorite_name: String::new(),
             favorite_cursor: None,
+            favorite_name_focused: false,
+            favorite_name_input: widget::Id::unique(),
+            settings_cursor: 0,
             confirm_delete_button: widget::Id::unique(),
             cancel_delete_button: widget::Id::unique(),
             dialog_input: widget::Id::unique(),
@@ -1309,7 +1700,13 @@ impl Application for App {
             saved_session: session,
             modifiers: Modifiers::empty(),
         };
-        (app, Task::batch(vec![left_task, right_task]))
+        // A theme of pa2's own replaces the desktop's from the first frame on
+        // ("System" is libcosmic's default, nothing to do).
+        let theme_task = match app.settings.color_theme {
+            ColorTheme::System => Task::none(),
+            _ => app.apply_color_theme(),
+        };
+        (app, Task::batch(vec![left_task, right_task, theme_task]))
     }
 
     fn update(&mut self, message: Self::Message) -> Task<Message> {
@@ -1657,8 +2054,8 @@ impl Application for App {
 
         let panes = widget::Row::new()
             .spacing(PANE_GAP)
-            .push(pane_frame(left, self.active_pane == PaneId::Left))
-            .push(pane_frame(right, self.active_pane == PaneId::Right))
+            .push(pane_frame(left, PaneId::Left, self.active_pane == PaneId::Left))
+            .push(pane_frame(right, PaneId::Right, self.active_pane == PaneId::Right))
             .width(Length::Fill)
             .height(Length::Fill);
 
@@ -1902,8 +2299,10 @@ const PANE_BORDER: f32 = 2.0;
 
 /// Encloses a pane in a rounded rectangle. The active pane's border uses the
 /// accent color; the other uses the text color (white in a dark theme).
-fn pane_frame(content: Element<'_, Message>, is_active: bool) -> Element<'_, Message> {
-    widget::container(content)
+/// A click anywhere in it (even on empty space) makes it the active pane;
+/// files, buttons, etc. handle their own clicks first.
+fn pane_frame(content: Element<'_, Message>, id: PaneId, is_active: bool) -> Element<'_, Message> {
+    let frame = widget::container(content)
         .padding(8)
         .width(Length::Fill)
         .height(Length::Fill)
@@ -1922,8 +2321,27 @@ fn pane_frame(content: Element<'_, Message>, is_active: bool) -> Element<'_, Mes
                 },
                 ..Default::default()
             }
-        }))
+        }));
+    widget::mouse_area(frame)
+        .on_press(Message::ActivatePane(id))
+        .on_right_press(Message::ActivatePane(id))
         .into()
+}
+
+/// The dropped `paths` that can go into `dest`: not the ones already in it,
+/// and not a folder into itself or one of its own subfolders.
+fn drop_sources(dest: &std::path::Path, paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    paths
+        .into_iter()
+        .filter(|path| path.parent() != Some(dest) && !dest.starts_with(path))
+        .collect()
+}
+
+/// Takes the keyboard focus away from whichever text field has it.
+fn unfocus_text_fields() -> Task<Message> {
+    cosmic::iced::runtime::task::widget(
+        cosmic::iced::core::widget::operation::focusable::unfocus(),
+    )
 }
 
 /// The keyboard highlight for a list row: the accent color, like a selected
@@ -1945,3 +2363,38 @@ fn highlight_style(theme: &cosmic::Theme, highlighted: bool) -> widget::containe
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stepping_through_options_wraps_around() {
+        assert_eq!(step_index(0, 1, 3), 1);
+        assert_eq!(step_index(2, 1, 3), 0);
+        assert_eq!(step_index(0, -1, 3), 2);
+        assert_eq!(step_index(1, -1, 3), 0);
+    }
+
+    #[test]
+    fn drops_skip_files_already_there_and_folders_into_themselves() {
+        let dest = std::path::Path::new("/home/me/docs");
+        let dropped = vec![
+            PathBuf::from("/home/me/docs/a.txt"),   // already in docs
+            PathBuf::from("/home/me/docs"),         // docs into itself
+            PathBuf::from("/home/me"),              // parent into its child
+            PathBuf::from("/home/me/music/b.mp3"),  // fine
+            PathBuf::from("/tmp/c"),                // fine
+        ];
+        assert_eq!(
+            drop_sources(dest, dropped),
+            [PathBuf::from("/home/me/music/b.mp3"), PathBuf::from("/tmp/c")]
+        );
+    }
+
+    #[test]
+    fn every_settings_row_is_listed_once() {
+        for row in SETTINGS_ROWS {
+            assert_eq!(SETTINGS_ROWS.iter().filter(|r| **r == row).count(), 1);
+        }
+    }
+}

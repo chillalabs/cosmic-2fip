@@ -14,4 +14,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 shlex = "1.3"
 i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
 i18n-embed-fl = "0.10"
-rust-embed = "8"
+# Embed the translations in debug builds too (by default rust-embed reads
+# them from the build-time folder path, which breaks if the project moves).
+rust-embed = { version = "8", features = ["debug-embed"] }

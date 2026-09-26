@@ -10,6 +10,8 @@ use cosmic::Element;
 
 use crate::app::{Message, PaneId};
 use crate::context_menu::item_menu;
+use crate::dnd::FileList;
+use cosmic::iced::clipboard::dnd::DndAction;
 use fs_ops::settings::{FontSize, ViewMode};
 use crate::file_item::{format_size, Column, FileItem, ListingOptions};
 use crate::fl;
@@ -72,6 +74,17 @@ pub enum PaneMessage {
     EntryRightClicked(table::Entity),
     /// A context-menu action; handled by the app, not the pane.
     Action(Action),
+    /// A drag entered a drop area (a folder, or the listing's own folder).
+    DropHover(PathBuf),
+    /// A drag left the drop area for `dest`.
+    DropLeave { dest: PathBuf, is_folder: bool },
+    /// Files dropped (drag and drop) into `dest`; `is_move` when the drag
+    /// negotiated a move. Handled by the app, not the pane.
+    DropFiles {
+        dest: PathBuf,
+        paths: Vec<PathBuf>,
+        is_move: bool,
+    },
     /// A content preview finished loading (`None`: none could be made).
     ThumbnailReady(ThumbnailKey, Option<PathBuf>),
     SelectAll,
@@ -125,6 +138,9 @@ pub struct PaneState {
     /// Previews already asked for (loaded, loading, or failed), so each file
     /// is only tried once.
     thumbnails_requested: HashSet<ThumbnailKey>,
+    /// Where a drag currently hovering this pane would drop its files (a
+    /// folder, or the tab's own folder); that place is highlighted.
+    drop_hover: Option<PathBuf>,
 }
 
 impl PaneState {
@@ -164,6 +180,7 @@ impl PaneState {
             path_input_id: widget::Id::unique(),
             thumbnails: HashMap::new(),
             thumbnails_requested: HashSet::new(),
+            drop_hover: None,
         };
         (pane, Task::batch(tasks))
     }
@@ -313,7 +330,19 @@ impl PaneState {
                 }
                 Task::none()
             }
-            PaneMessage::Action(_) => Task::none(),
+            PaneMessage::Action(_) | PaneMessage::DropFiles { .. } => Task::none(),
+            PaneMessage::DropHover(dest) => {
+                self.drop_hover = Some(dest);
+                Task::none()
+            }
+            PaneMessage::DropLeave { dest, is_folder } => {
+                if self.drop_hover.as_ref() == Some(&dest) {
+                    // Leaving a folder row: the drag is still over the listing
+                    // (whose own area reports leaving separately).
+                    self.drop_hover = is_folder.then(|| self.current_dir());
+                }
+                Task::none()
+            }
             PaneMessage::ThumbnailReady(key, thumbnail) => {
                 if let Some(png) = thumbnail {
                     self.thumbnails.insert(key, widget::icon::from_path(png));
@@ -569,6 +598,16 @@ impl PaneState {
         }
     }
 
+    /// Removes the drop highlight (after a drop).
+    pub fn clear_drop_hover(&mut self) {
+        self.drop_hover = None;
+    }
+
+    /// Whether a drag hovering this pane would drop into `path`.
+    fn is_drop_hover(&self, path: &Path) -> bool {
+        self.drop_hover.as_deref() == Some(path)
+    }
+
     /// Leaves path editing (if active), showing the breadcrumbs again.
     /// Returns whether it was editing.
     pub fn cancel_path_edit(&mut self) -> bool {
@@ -815,7 +854,7 @@ impl PaneState {
                 if let Some(err) = &t.error {
                     widget::text(err.clone()).into()
                 } else {
-                    match t.view_mode {
+                    let listing: Element<'_, PaneMessage> = match t.view_mode {
                         ViewMode::List => widget::Column::new()
                             .push(list_header(t, self.options.separate_extension))
                             .push(widget::divider::horizontal::default())
@@ -850,7 +889,15 @@ impl PaneState {
                             })
                             .into()
                         }
-                    }
+                    };
+                    // Dropping anywhere in the listing (not on a folder) puts
+                    // the files into the folder this tab shows.
+                    let highlight = self.is_drop_hover(&t.current_dir);
+                    let listing = widget::container(listing)
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .class(drop_highlight_class(highlight));
+                    drop_target(listing, t.current_dir.clone(), false)
                 }
             }
         };
@@ -1021,9 +1068,13 @@ const LIST_ROW_PADDING_X: u16 = 8;
 /// the header (outside the scroll area) adds it itself to line up.
 const LIST_SCROLL_PADDING: u16 = 8;
 
-/// Accent background for selected rows / cells (none otherwise).
-fn selection_class(selected: bool) -> cosmic::theme::Container<'static> {
+/// Accent background for selected rows / cells; the drop highlight for a
+/// folder that files dragged over it would drop into (none otherwise).
+fn selection_class(selected: bool, drop_hover: bool) -> cosmic::theme::Container<'static> {
     cosmic::theme::Container::custom(move |theme| {
+        if drop_hover {
+            return drop_highlight_style(theme);
+        }
         if !selected {
             return widget::container::Style::default();
         }
@@ -1153,12 +1204,16 @@ fn list_view<'a>(
         let row = widget::container(row)
             .padding([4, LIST_ROW_PADDING_X])
             .width(Length::Fill)
-            .class(selection_class(tab_state.entries.is_active(entity)));
+            .class(selection_class(
+                tab_state.entries.is_active(entity),
+                item.is_dir() && pane.is_drop_hover(&item.path),
+            ));
         let area = widget::mouse_area(row)
             .on_press(PaneMessage::EntrySelected(entity, select_mode))
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
-        rows = rows.push(widget::context_menu(area, item_menu(keybinds, item, can_paste)));
+        let entry = widget::context_menu(area, item_menu(keybinds, item, can_paste));
+        rows = rows.push(draggable_entry(entry, pane, tab_state, item, DragLook::Row));
     }
     rows.into()
 }
@@ -1214,12 +1269,16 @@ fn grid_view<'a>(
             .padding(6)
             .width(Length::Fixed(GRID_CELL_WIDTH))
             .clip(true)
-            .class(selection_class(selected));
+            .class(selection_class(
+                selected,
+                item.is_dir() && pane.is_drop_hover(&item.path),
+            ));
         let area = widget::mouse_area(cell)
             .on_press(PaneMessage::EntrySelected(entity, select_mode))
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
-        cells.push(widget::context_menu(area, item_menu(keybinds, item, can_paste)).into());
+        let entry = widget::context_menu(area, item_menu(keybinds, item, can_paste));
+        cells.push(draggable_entry(entry, pane, tab_state, item, DragLook::Tile));
     }
 
     // Plain rows of fixed-size cells: predictable spacing (a flex layout
@@ -1234,6 +1293,171 @@ fn grid_view<'a>(
         grid = grid.push(row);
     }
     grid.into()
+}
+
+/// Makes a listing entry draggable (dragging a selected entry drags the
+/// whole selection) and, for folders, a drop target for files.
+fn draggable_entry<'a>(
+    entry: impl Into<Element<'a, PaneMessage>>,
+    pane: &PaneState,
+    tab_state: &TabState,
+    item: &FileItem,
+    look: DragLook,
+) -> Element<'a, PaneMessage> {
+    let dragged: Vec<PathBuf> = if tab_state.selected_contains(&item.path) {
+        tab_state.selected_paths()
+    } else {
+        vec![item.path.clone()]
+    };
+    // Shown under the pointer while dragging: the thumbnail (or type icon)
+    // of the grabbed entry, with a count when several files go along.
+    let picture = pane.item_icon(item);
+    let name = item.name().to_string();
+    let count = dragged.len();
+    let source = widget::dnd_source::<PaneMessage, FileList>(entry)
+        .drag_content(move || FileList(dragged.clone()))
+        .drag_icon(move |grab_offset| {
+            drag_picture(look, picture.clone(), &name, count, grab_offset)
+        });
+    if item.is_dir() {
+        drop_target(source, item.path.clone(), true)
+    } else {
+        source.into()
+    }
+}
+
+/// How the picture under the pointer looks while dragging.
+#[derive(Debug, Clone, Copy)]
+enum DragLook {
+    /// List view: rows are only ~30 px tall, so a row-height picture with
+    /// the file name beside it.
+    Row,
+    /// Grid view: a large thumbnail, like the cell itself.
+    Tile,
+}
+
+const DRAG_TILE_ICON: f32 = 64.0;
+const DRAG_ROW_ICON: f32 = 22.0;
+
+/// The picture shown under the pointer while dragging: the entry's
+/// thumbnail (or type icon), and a count badge when several files go along.
+/// The drag surface's top-left corner is placed at the pointer, whatever
+/// spot of the row was grabbed (measured: the picture moved right by exactly
+/// the grab distance when it was padded to the grab spot). So the picture is
+/// drawn at the surface's top-left and the returned offset (applied with
+/// `wl_surface.offset`) moves it up-left by half the icon, which centers the
+/// icon on the pointer.
+fn drag_picture(
+    look: DragLook,
+    picture: widget::icon::Handle,
+    name: &str,
+    count: usize,
+    // Where the row was grabbed: not needed, the surface follows the pointer.
+    _grab_offset: cosmic::iced::Vector,
+) -> (
+    Element<'static, ()>,
+    cosmic::iced::core::widget::tree::State,
+    cosmic::iced::Vector,
+) {
+    let badge = (count > 1).then(|| {
+        widget::container(widget::text::caption(count.to_string()))
+            .padding([0, 6])
+            .class(cosmic::theme::Container::custom(|theme| {
+                let cosmic = theme.cosmic();
+                widget::container::Style {
+                    text_color: Some(cosmic.on_accent_color().into()),
+                    background: Some(cosmic::iced::Background::Color(
+                        cosmic.accent_color().into(),
+                    )),
+                    border: cosmic::iced::Border {
+                        radius: cosmic.radius_xl().into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            }))
+    });
+
+    let (content, icon_size): (Element<'static, ()>, f32) = match look {
+        DragLook::Tile => {
+            let stack = widget::Column::new()
+                .align_x(cosmic::iced::Alignment::Center)
+                .push(widget::icon(picture).size(DRAG_TILE_ICON as u16))
+                .push_maybe(badge);
+            (stack.into(), DRAG_TILE_ICON)
+        }
+        DragLook::Row => {
+            let row = widget::Row::new()
+                .spacing(6)
+                .align_y(cosmic::iced::Alignment::Center)
+                .push(widget::icon(picture).size(DRAG_ROW_ICON as u16))
+                .push(widget::text::body(name.to_string()))
+                .push_maybe(badge);
+            (row.into(), DRAG_ROW_ICON)
+        }
+    };
+    // The icon's center goes on the pointer.
+    let half = icon_size / 2.0;
+    (
+        content,
+        cosmic::iced::core::widget::tree::State::None,
+        cosmic::iced::Vector::new(-half, -half),
+    )
+}
+
+/// A drop zone for files (from pa2 or another app) that go into `dest`.
+fn drop_target<'a>(
+    content: impl Into<Element<'a, PaneMessage>>,
+    dest: PathBuf,
+    is_folder: bool,
+) -> Element<'a, PaneMessage> {
+    let on_drop = dest.clone();
+    let on_enter = dest.clone();
+    widget::dnd_destination::DndDestination::for_data::<FileList>(content, move |files, action| {
+        PaneMessage::DropFiles {
+            dest: on_drop.clone(),
+            paths: files.map(|files| files.0).unwrap_or_default(),
+            is_move: action == DndAction::Move,
+        }
+    })
+    // Copy unless the user asks for a move (Shift), like Total Commander.
+    .preferred_action(DndAction::Copy)
+    // Highlight where the files would go while a drag is over this area.
+    .on_enter(move |_, _, _| PaneMessage::DropHover(on_enter.clone()))
+    .on_leave(move || PaneMessage::DropLeave {
+        dest: dest.clone(),
+        is_folder,
+    })
+    .into()
+}
+
+/// Frame and tint the listing when files dragged over it would drop into
+/// the tab's folder.
+fn drop_highlight_class(highlight: bool) -> cosmic::theme::Container<'static> {
+    cosmic::theme::Container::custom(move |theme| {
+        if !highlight {
+            return widget::container::Style::default();
+        }
+        drop_highlight_style(theme)
+    })
+}
+
+/// The drop highlight: a light accent tint with an accent border.
+fn drop_highlight_style(theme: &cosmic::Theme) -> widget::container::Style {
+    let cosmic = theme.cosmic();
+    let accent: cosmic::iced::Color = cosmic.accent_color().into();
+    widget::container::Style {
+        background: Some(cosmic::iced::Background::Color(cosmic::iced::Color {
+            a: 0.15,
+            ..accent
+        })),
+        border: cosmic::iced::Border {
+            color: accent,
+            width: 2.0,
+            radius: cosmic.radius_s().into(),
+        },
+        ..Default::default()
+    }
 }
 
 /// Turns what the user typed in the path bar into an absolute path:

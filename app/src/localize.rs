@@ -1,7 +1,8 @@
 //! UI translations (Fluent files in `app/i18n/<language>/`), the same system
-//! libcosmic and COSMIC's own apps use. English is the base language;
-//! `es-419` (Latin America) is a full translation and `es` (Spain) only holds
-//! the strings that differ from it.
+//! libcosmic and COSMIC's own apps use. English is the base language; German,
+//! French, Italian, Latin American Spanish (`es-419`) and Brazilian Portuguese
+//! (`pt-BR`) are full translations. Spain Spanish (`es`) and European
+//! Portuguese (`pt`) only hold the strings that differ from `es-419` / `pt-BR`.
 
 use std::sync::LazyLock;
 
@@ -38,14 +39,23 @@ macro_rules! fl {
 
 /// The language choices offered in Settings: (code saved in the settings
 /// file, name shown). "system" follows the desktop's language.
-pub const LANGUAGES: [(&str, &str); 4] = [
+pub const LANGUAGES: [(&str, &str); 9] = [
     ("system", ""), // shown as the translated "System default"
+    ("de", "Deutsch"),
     ("en", "English"),
     ("es", "Español (España)"),
     ("es-419", "Español (Latinoamérica)"),
+    ("fr", "Français"),
+    ("it", "Italiano"),
+    ("pt", "Português (Portugal)"),
+    ("pt-BR", "Português (Brasil)"),
 ];
 
-/// Switches the UI to `code` ("system", "en", "es" or "es-419"). Takes effect
+/// Translations that only override another one: (language, the full
+/// translation its other strings come from).
+const OVERRIDES: [(&str, &str); 2] = [("es", "es-419"), ("pt", "pt-BR")];
+
+/// Switches the UI to `code` (see [`LANGUAGES`]). Takes effect
 /// on the next redraw, since every view reads its strings through `fl!`.
 pub fn set_language(code: &str) {
     let chosen = match code {
@@ -66,15 +76,22 @@ pub fn set_language(code: &str) {
 /// The languages to look strings up in, most specific first (English, the
 /// fallback, is always searched last by the loader).
 fn fallback_chain(language: &str) -> Vec<&'static str> {
-    match language {
-        "es" => vec!["es", "es-419", "en"],
-        "es-419" => vec!["es-419", "en"],
-        _ => vec!["en"],
+    let Some(&(code, _)) = LANGUAGES.iter().find(|(code, _)| *code == language) else {
+        return vec!["en"];
+    };
+    let mut chain = vec![code];
+    if let Some(&(_, base)) = OVERRIDES.iter().find(|(overriding, _)| *overriding == code) {
+        chain.push(base);
     }
+    if code != "en" {
+        chain.push("en");
+    }
+    chain
 }
 
 /// The supported language closest to the desktop's: Spanish from Spain (or
-/// with no country) is "es", Spanish from anywhere else is "es-419".
+/// with no country) is "es", other Spanish "es-419"; Portuguese from Brazil is
+/// "pt-BR", other Portuguese "pt"; German, French, Italian from anywhere.
 fn system_language() -> String {
     let requested = i18n_embed::DesktopLanguageRequester::requested_languages();
     requested
@@ -84,12 +101,15 @@ fn system_language() -> String {
 }
 
 fn supported_for(language: &str, region: Option<String>) -> Option<String> {
-    match (language, region.as_deref()) {
-        ("es", None | Some("ES")) => Some("es".to_string()),
-        ("es", Some(_)) => Some("es-419".to_string()),
-        ("en", _) => Some("en".to_string()),
-        _ => None,
-    }
+    let code = match (language, region.as_deref()) {
+        ("es", None | Some("ES")) => "es",
+        ("es", Some(_)) => "es-419",
+        ("pt", Some("BR")) => "pt-BR",
+        ("pt", _) => "pt",
+        ("en" | "de" | "fr" | "it", _) => language,
+        _ => return None,
+    };
+    Some(code.to_string())
 }
 
 #[cfg(test)]
@@ -118,8 +138,37 @@ mod tests {
             "¿Mover «a.txt» a la papelera?"
         );
 
+        set_language("de");
+        assert_eq!(crate::fl!("menu-file"), "Datei");
+        set_language("fr");
+        assert_eq!(crate::fl!("menu-file"), "Fichier");
+        // French spacing: non-breaking spaces inside « » and before "?".
+        assert_eq!(
+            crate::fl!("delete-one", name = "a.txt"),
+            "Placer «\u{a0}a.txt\u{a0}» dans la corbeille\u{a0}?"
+        );
+        set_language("it");
+        assert_eq!(crate::fl!("menu-file"), "File");
+        assert_eq!(crate::fl!("status-items", count = 2), "2 elementi");
+
+        // Portugal: its own word where it differs, Brazilian otherwise.
+        set_language("pt-BR");
+        assert_eq!(crate::fl!("menu-file"), "Arquivo");
+        set_language("pt");
+        assert_eq!(crate::fl!("menu-file"), "Ficheiro");
+        assert_eq!(crate::fl!("paste"), "Colar");
+
         set_language("en");
         assert_eq!(crate::fl!("status-items", count = 1), "1 item");
+    }
+
+    #[test]
+    fn fallback_chains_go_from_specific_to_english() {
+        assert_eq!(fallback_chain("pt"), ["pt", "pt-BR", "en"]);
+        assert_eq!(fallback_chain("es"), ["es", "es-419", "en"]);
+        assert_eq!(fallback_chain("de"), ["de", "en"]);
+        assert_eq!(fallback_chain("en"), ["en"]);
+        assert_eq!(fallback_chain("xx"), ["en"]);
     }
 
     /// Message IDs defined in one embedded `.ftl` file.
@@ -137,17 +186,18 @@ mod tests {
     #[test]
     fn translations_are_complete() {
         let english = keys("en");
-        let latam = keys("es-419");
-        let missing: Vec<_> = english.difference(&latam).collect();
-        assert!(missing.is_empty(), "es-419 lacks: {missing:?}");
-        let unknown: Vec<_> = latam.difference(&english).collect();
-        assert!(unknown.is_empty(), "es-419 has unknown keys: {unknown:?}");
-
-        // Spain only overrides; every key it has must exist in English.
-        let spain = keys("es");
-        let unknown: Vec<_> = spain.difference(&english).collect();
-        assert!(unknown.is_empty(), "es has unknown keys: {unknown:?}");
-        assert!(!spain.is_empty());
+        for (language, _) in LANGUAGES.iter().filter(|(code, _)| !["system", "en"].contains(code)) {
+            let translated = keys(language);
+            let unknown: Vec<_> = translated.difference(&english).collect();
+            assert!(unknown.is_empty(), "{language} has unknown keys: {unknown:?}");
+            let is_override = OVERRIDES.iter().any(|(code, _)| code == language);
+            if is_override {
+                assert!(!translated.is_empty(), "{language} is empty");
+            } else {
+                let missing: Vec<_> = english.difference(&translated).collect();
+                assert!(missing.is_empty(), "{language} lacks: {missing:?}");
+            }
+        }
     }
 
     #[test]
@@ -157,6 +207,11 @@ mod tests {
         assert_eq!(supported_for("es", Some("CL".into())).as_deref(), Some("es-419"));
         assert_eq!(supported_for("es", Some("MX".into())).as_deref(), Some("es-419"));
         assert_eq!(supported_for("en", Some("US".into())).as_deref(), Some("en"));
-        assert_eq!(supported_for("fr", Some("FR".into())), None);
+        assert_eq!(supported_for("pt", Some("BR".into())).as_deref(), Some("pt-BR"));
+        assert_eq!(supported_for("pt", Some("PT".into())).as_deref(), Some("pt"));
+        assert_eq!(supported_for("de", Some("AT".into())).as_deref(), Some("de"));
+        assert_eq!(supported_for("fr", Some("CA".into())).as_deref(), Some("fr"));
+        assert_eq!(supported_for("it", None).as_deref(), Some("it"));
+        assert_eq!(supported_for("ja", Some("JP".into())), None);
     }
 }
