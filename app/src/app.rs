@@ -119,6 +119,23 @@ const FONT_SIZES: [FontSize; 4] = [
     FontSize::Tiny,
 ];
 
+/// Where the Favorites dialog's keyboard focus is: on the list (see
+/// `favorite_cursor`), the new favorite's name field, or a button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FavoriteFocus {
+    List,
+    NameField,
+    AddButton,
+    CloseButton,
+}
+
+/// Text sizes in the Favorites dialog: a step below libcosmic's body (14)
+/// and caption (12).
+const FAVORITES_NAME_SIZE: f32 = 13.0;
+const FAVORITES_PATH_SIZE: f32 = 11.0;
+const FAVORITES_DIALOG_WIDTH: f32 = 620.0;
+const FAVORITES_LIST_MAX_HEIGHT: f32 = 360.0;
+
 /// The Settings panel's rows, top to bottom, for keyboard navigation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsRow {
@@ -283,9 +300,10 @@ pub struct App {
     /// The favorite highlighted for keyboard use (↑/↓ to move, Enter to open)
     /// while the Favorites panel is open.
     favorite_cursor: Option<usize>,
-    /// The Favorites panel's "Add current folder" name field has the keyboard
-    /// (reached with ↓/Tab after the last favorite).
-    favorite_name_focused: bool,
+    /// Where the Favorites dialog's keyboard focus is.
+    favorite_focus: FavoriteFocus,
+    favorite_add_button: widget::Id,
+    favorite_close_button: widget::Id,
     favorite_name_input: widget::Id,
     /// The Settings row with keyboard focus (index into [`SETTINGS_ROWS`]).
     settings_cursor: usize,
@@ -712,7 +730,7 @@ impl App {
             }
             Message::FocusFavorite(index) => {
                 self.favorite_cursor = Some(index);
-                self.favorite_name_focused = false;
+                self.favorite_focus = FavoriteFocus::List;
                 unfocus_text_fields()
             }
             Message::FocusSettingsRow(row) => {
@@ -1054,12 +1072,14 @@ impl App {
             self.close_drawer();
         } else {
             self.drawer = Some(page);
-            self.core.set_show_context(true);
+            // Settings slides in from the right; Favorites is a centered
+            // dialog (see `dialog`).
+            self.core.set_show_context(page == DrawerPage::Settings);
             if page == DrawerPage::Settings {
                 self.settings_cursor = 0;
             }
             if page == DrawerPage::Favorites {
-                self.favorite_name_focused = false;
+                self.favorite_focus = FavoriteFocus::List;
                 // Start on the current folder's favorite, if it has one.
                 let current = self.pane(self.active_pane).current_dir();
                 self.favorite_cursor = self
@@ -1245,9 +1265,26 @@ impl App {
         if let Some(forward) = forward {
             return Some(self.move_favorite_focus(forward));
         }
-        if !modifiers.is_empty() || self.favorite_name_focused {
-            // The name field handles its own typing (and Enter adds).
+        if !modifiers.is_empty() {
             return None;
+        }
+        match self.favorite_focus {
+            FavoriteFocus::List => {}
+            // The name field handles its own typing (and Enter adds).
+            FavoriteFocus::NameField => return None,
+            // A focused button runs on Enter or Space by itself; this is the
+            // fallback if it didn't take the key.
+            FavoriteFocus::AddButton | FavoriteFocus::CloseButton => {
+                let message = match self.favorite_focus {
+                    FavoriteFocus::AddButton => Message::AddFavorite,
+                    _ => Message::CloseDrawer,
+                };
+                return match key {
+                    Key::Named(Named::Enter) => Some(self.update(message)),
+                    Key::Character(c) if c.as_str() == " " => Some(self.update(message)),
+                    _ => None,
+                };
+            }
         }
         match key {
             Key::Named(Named::Home) if count > 0 => {
@@ -1271,24 +1308,37 @@ impl App {
     }
 
     /// Moves the Favorites keyboard focus one step: through the favorites,
-    /// then the "Add current folder" name field, wrapping around.
+    /// then the "Add current folder" name field, the Add button and Close,
+    /// wrapping around.
     fn move_favorite_focus(&mut self, forward: bool) -> Task<Message> {
         let count = self.favorites.len();
-        // Positions 0..count are favorites; `count` is the name field.
-        let current = if self.favorite_name_focused {
-            count
-        } else {
-            self.favorite_cursor.unwrap_or(count)
+        // Positions 0..count are favorites, then the name field, Add, Close.
+        let current = match self.favorite_focus {
+            FavoriteFocus::List => self.favorite_cursor.unwrap_or(count),
+            FavoriteFocus::NameField => count,
+            FavoriteFocus::AddButton => count + 1,
+            FavoriteFocus::CloseButton => count + 2,
         };
-        let target = step_index(current, if forward { 1 } else { -1 }, count + 1);
-        if target == count {
-            self.favorite_name_focused = true;
-            self.favorite_cursor = None;
-            widget::text_input::focus(self.favorite_name_input.clone())
-        } else {
-            self.favorite_name_focused = false;
+        let target = step_index(current, if forward { 1 } else { -1 }, count + 3);
+        if target < count {
+            self.favorite_focus = FavoriteFocus::List;
             self.favorite_cursor = Some(target);
-            unfocus_text_fields()
+            return unfocus_text_fields();
+        }
+        self.favorite_cursor = None;
+        match target - count {
+            0 => {
+                self.favorite_focus = FavoriteFocus::NameField;
+                widget::text_input::focus(self.favorite_name_input.clone())
+            }
+            1 => {
+                self.favorite_focus = FavoriteFocus::AddButton;
+                widget::button::focus(self.favorite_add_button.clone())
+            }
+            _ => {
+                self.favorite_focus = FavoriteFocus::CloseButton;
+                widget::button::focus(self.favorite_close_button.clone())
+            }
         }
     }
 
@@ -1397,10 +1447,13 @@ impl App {
         widget::settings::view_column(vec![general.into(), theme.into()]).into()
     }
 
-    fn favorites_page(&self) -> Element<'_, Message> {
-        let mut saved = widget::settings::section().title(fl!("favorites-saved"));
+    /// The Favorites dialog, centered over the window. Its text is a step
+    /// smaller than libcosmic's dialog and settings defaults, so long folder
+    /// paths fit.
+    fn favorites_dialog(&self) -> Element<'_, Message> {
+        let mut saved = widget::Column::new().spacing(2);
         if self.favorites.is_empty() {
-            saved = saved.add(widget::text(fl!("favorites-empty")));
+            saved = saved.push(widget::text(fl!("favorites-empty")).size(FAVORITES_NAME_SIZE));
         }
         for (index, favorite) in self.favorites.iter().enumerate() {
             let is_first = index == 0;
@@ -1423,11 +1476,18 @@ impl App {
                     widget::button::icon(widget::icon::from_name("user-trash-symbolic"))
                         .on_press(Message::RemoveFavorite(index)),
                 );
-            let row = widget::settings::item::builder(favorite.name.clone())
-                .description(favorite.path.display().to_string())
-                .control(buttons);
+            let names = widget::Column::new()
+                .spacing(2)
+                .width(Length::Fill)
+                .push(widget::text(favorite.name.as_str()).size(FAVORITES_NAME_SIZE))
+                .push(widget::text(favorite.path.display().to_string()).size(FAVORITES_PATH_SIZE));
+            let row = widget::Row::new()
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .push(names)
+                .push(buttons);
             let highlighted = self.favorite_cursor == Some(index);
-            saved = saved.add(
+            saved = saved.push(
                 // A click on the row (not its buttons) highlights it.
                 widget::mouse_area(widget::container(row).padding([4, 8]).class(
                     cosmic::theme::Container::custom(move |theme| {
@@ -1439,34 +1499,49 @@ impl App {
         }
 
         let current = self.pane(self.active_pane).current_dir();
-        let add = widget::settings::section()
-            .title(fl!("favorites-add-current"))
-            .add(
-                widget::Column::new()
+        let add = widget::Column::new()
+            .spacing(8)
+            .push(widget::text::caption_heading(fl!("favorites-add-current")))
+            .push(widget::text(current.display().to_string()).size(FAVORITES_PATH_SIZE))
+            .push(
+                widget::Row::new()
                     .spacing(8)
-                    .push(widget::text::caption(current.display().to_string()))
+                    .align_y(Alignment::Center)
                     .push(
-                        widget::Row::new()
-                            .spacing(8)
-                            .align_y(Alignment::Center)
-                            .push(
-                                widget::text_input(
-                                    tab_label(&current),
-                                    self.favorite_name.as_str(),
-                                )
-                                .id(self.favorite_name_input.clone())
-                                .on_input(Message::FavoriteNameChanged)
-                                .on_submit(|_| Message::AddFavorite)
-                                .width(Length::Fill),
-                            )
-                            .push(
-                                widget::button::suggested(fl!("favorites-add"))
-                                    .on_press(Message::AddFavorite),
-                            ),
+                        widget::text_input(tab_label(&current), self.favorite_name.as_str())
+                            .id(self.favorite_name_input.clone())
+                            .on_input(Message::FavoriteNameChanged)
+                            .on_submit(|_| Message::AddFavorite)
+                            .size(FAVORITES_NAME_SIZE)
+                            .width(Length::Fill),
+                    )
+                    .push(
+                        widget::button::suggested(fl!("favorites-add"))
+                            .id(self.favorite_add_button.clone())
+                            .on_press(Message::AddFavorite),
+                    )
+                    // Close sits right of Add, in Tab order.
+                    .push(
+                        widget::button::standard(fl!("close"))
+                            .id(self.favorite_close_button.clone())
+                            .on_press(Message::CloseDrawer),
                     ),
             );
 
-        widget::settings::view_column(vec![saved.into(), add.into()]).into()
+        let content = widget::Column::new()
+            .spacing(12)
+            .push(widget::text::title4(fl!("favorites")))
+            .push(widget::text::caption_heading(fl!("favorites-saved")))
+            .push(
+                widget::container(widget::scrollable(saved)).max_height(FAVORITES_LIST_MAX_HEIGHT),
+            )
+            .push(widget::divider::horizontal::light())
+            .push(add);
+
+        widget::dialog()
+            .width(Length::Fixed(FAVORITES_DIALOG_WIDTH))
+            .control(content)
+            .into()
     }
 
     /// Files dropped into `dest` (drag and drop, from 2fip or another app):
@@ -1701,7 +1776,9 @@ impl Application for App {
             favorites: fs_ops::favorites::load(),
             favorite_name: String::new(),
             favorite_cursor: None,
-            favorite_name_focused: false,
+            favorite_focus: FavoriteFocus::List,
+            favorite_add_button: widget::Id::unique(),
+            favorite_close_button: widget::Id::unique(),
             favorite_name_input: widget::Id::unique(),
             settings_cursor: 0,
             confirm_delete_button: widget::Id::unique(),
@@ -1760,10 +1837,7 @@ impl Application for App {
                 context_drawer::context_drawer(self.settings_page(), Message::CloseDrawer)
                     .title(fl!("settings"))
             }
-            DrawerPage::Favorites => {
-                context_drawer::context_drawer(self.favorites_page(), Message::CloseDrawer)
-                    .title(fl!("favorites"))
-            }
+            DrawerPage::Favorites => return None,
         };
         Some(drawer)
     }
@@ -1886,6 +1960,10 @@ impl Application for App {
 
         if let Some(details) = &self.details {
             return Some(details_dialog(details));
+        }
+
+        if self.drawer == Some(DrawerPage::Favorites) {
+            return Some(self.favorites_dialog());
         }
 
         if let Some(new_folder) = &self.new_folder {
