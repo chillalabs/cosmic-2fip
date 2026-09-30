@@ -67,6 +67,7 @@ tooltip-back = Voltar (Alt+←)
 tooltip-forward = Avançar (Alt+→)
 tooltip-up = Pasta acima (Backspace)
 tooltip-new-tab = Nova aba (Ctrl+T)
+tooltip-refresh = Atualizar os dois painéis (Ctrl+R)
 tooltip-edit-path = Editar caminho (Ctrl+L)
 tooltip-cancel-esc = Cancelar (Esc)
 no-tab-open = Nenhuma aba aberta
@@ -181,3 +182,20 @@ details-unknown = Desconhecido
 kind-folder = Pasta
 kind-file = Arquivo
 kind-symlink = Link simbólico
+
+## Diálogo Localizar arquivos
+find = Localizar arquivos
+tooltip-find = Localizar arquivos (Ctrl+F)
+find-in = Em { $path } e suas subpastas
+find-placeholder = Nome ou padrão (ex.: relatorio ou *.pdf)
+find-search = Pesquisar
+find-stop = Parar
+find-hint = Digite parte de um nome e pressione Enter.
+find-searching = Pesquisando… { $count } encontrados
+find-results = { $count ->
+    [one] 1 resultado
+   *[other] { $count } resultados
+}
+find-no-results = Nada encontrado.
+find-truncated = Mostrando os primeiros { $count } resultados; tente um nome mais específico.
+find-go-to = Ir para o arquivo

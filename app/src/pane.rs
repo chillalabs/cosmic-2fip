@@ -534,14 +534,7 @@ impl PaneState {
                     self.navigate_active(path)
                 } else if path.exists() {
                     // A file: open its folder with the file selected.
-                    let Some(parent) = path.parent().map(Path::to_path_buf) else {
-                        return Task::none();
-                    };
-                    self.cancel_path_edit();
-                    if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
-                        tab_state.pending_select = Some(PendingSelect::Path(path));
-                    }
-                    self.navigate_active(parent)
+                    self.reveal(path)
                 } else {
                     self.path_edit_error =
                         Some(fl!("path-not-found", path = path.display().to_string()));
@@ -553,6 +546,18 @@ impl PaneState {
                 Task::none()
             }
         }
+    }
+
+    /// Opens the folder holding `path` in the active tab, with `path` selected.
+    pub fn reveal(&mut self, path: PathBuf) -> Task<Message> {
+        let Some(parent) = path.parent().map(Path::to_path_buf) else {
+            return Task::none();
+        };
+        self.cancel_path_edit();
+        if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
+            tab_state.pending_select = Some(PendingSelect::Path(path));
+        }
+        self.navigate_active(parent)
     }
 
     /// Navigates the active tab to `path`, recording `current_dir` in its back history.

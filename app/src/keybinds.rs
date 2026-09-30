@@ -72,6 +72,10 @@ pub enum Action {
     /// Opens or closes the Settings side panel.
     Settings,
     ToggleHiddenFiles,
+    /// Ctrl+R: re-reads the active tab's folder in both panels.
+    Refresh,
+    /// Ctrl+F: the Find Files dialog.
+    Find,
     Quit,
 }
 
@@ -193,6 +197,12 @@ pub fn default_keybinds() -> HashMap<KeyBind, Action> {
         Key::Character("d".into()),
         Action::Favorites,
     );
+    bind(
+        &[Modifier::Ctrl],
+        Key::Character("r".into()),
+        Action::Refresh,
+    );
+    bind(&[Modifier::Ctrl], Key::Character("f".into()), Action::Find);
     bind(&[], Key::Named(Named::Delete), Action::Delete);
     bind(&[], Key::Named(Named::Enter), Action::Open);
     bind(&[Modifier::Ctrl], Key::Character("x".into()), Action::Cut);

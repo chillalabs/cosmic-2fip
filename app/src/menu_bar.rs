@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use cosmic::widget::icon;
+use cosmic::iced::{Alignment, Length};
 use cosmic::widget::menu::action::MenuAction;
 use cosmic::widget::menu::key_bind::KeyBind;
 use cosmic::widget::menu::{self, Item as MenuItem, ItemHeight, ItemWidth};
 use cosmic::widget::RcElementWrapper;
+use cosmic::widget::{self, icon};
 use cosmic::Element;
 use fs_ops::settings::ViewMode;
 
@@ -26,12 +27,13 @@ impl MenuAction for TopMenuAction {
     }
 }
 
-/// The File / Edit / View menu bar shown in the window header.
+/// The header's left side: the File / Edit / View menus, a separator, and
+/// the Refresh and Find buttons.
 pub fn menu_bar<'a>(
     keybinds: &HashMap<KeyBind, Action>,
     can_paste: bool,
     view_mode: ViewMode,
-) -> Element<'a, Message> {
+) -> Vec<Element<'a, Message>> {
     // Same shortcuts, re-keyed to the wrapper so the menu can show them.
     let keybinds: HashMap<KeyBind, TopMenuAction> = keybinds
         .iter()
@@ -110,13 +112,39 @@ pub fn menu_bar<'a>(
         ),
     ];
 
-    menu::bar(vec![
+    let bar = menu::bar(vec![
         menu::Tree::with_children(root(fl!("menu-file")), menu::items(&keybinds, file)),
         menu::Tree::with_children(root(fl!("menu-edit")), menu::items(&keybinds, edit)),
         menu::Tree::with_children(root(fl!("menu-view")), menu::items(&keybinds, view)),
     ])
     .item_height(ItemHeight::Dynamic(40))
     .item_width(ItemWidth::Uniform(260))
-    .spacing(4.0)
-    .into()
+    .spacing(4.0);
+    let separator = widget::container(widget::divider::vertical::default())
+        .height(Length::Fixed(20.0))
+        .padding([0, 4]);
+    // The tooltip goes below: the buttons sit at the top of the window, and
+    // libcosmic's default (above) would cover the title bar.
+    let tool = |icon_name: &'static str, tooltip: String, action: Action| {
+        widget::tooltip(
+            widget::button::icon(icon::from_name(icon_name)).on_press(Message::Action(action)),
+            widget::text(tooltip),
+            widget::tooltip::Position::Bottom,
+        )
+    };
+
+    vec![
+        bar.into(),
+        widget::container(separator)
+            .height(Length::Fill)
+            .align_y(Alignment::Center)
+            .into(),
+        tool(
+            "view-refresh-symbolic",
+            fl!("tooltip-refresh"),
+            Action::Refresh,
+        )
+        .into(),
+        tool("system-search-symbolic", fl!("tooltip-find"), Action::Find).into(),
+    ]
 }

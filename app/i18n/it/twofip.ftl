@@ -65,6 +65,7 @@ tooltip-back = Indietro (Alt+←)
 tooltip-forward = Avanti (Alt+→)
 tooltip-up = Cartella superiore (Backspace)
 tooltip-new-tab = Nuova scheda (Ctrl+T)
+tooltip-refresh = Aggiorna entrambi i pannelli (Ctrl+R)
 tooltip-edit-path = Modifica percorso (Ctrl+L)
 tooltip-cancel-esc = Annulla (Esc)
 no-tab-open = Nessuna scheda aperta
@@ -179,3 +180,20 @@ details-unknown = Sconosciuto
 kind-folder = Cartella
 kind-file = File
 kind-symlink = Collegamento simbolico
+
+## Finestra Cerca file
+find = Cerca file
+tooltip-find = Cerca file (Ctrl+F)
+find-in = In { $path } e nelle sue sottocartelle
+find-placeholder = Nome o modello (es. relazione o *.pdf)
+find-search = Cerca
+find-stop = Ferma
+find-hint = Digita parte di un nome e premi Invio.
+find-searching = Ricerca in corso… { $count } trovati
+find-results = { $count ->
+    [one] 1 risultato
+   *[other] { $count } risultati
+}
+find-no-results = Nessun risultato.
+find-truncated = Vengono mostrati i primi { $count } risultati; prova un nome più specifico.
+find-go-to = Vai al file

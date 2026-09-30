@@ -16,12 +16,14 @@ use tokio_stream::{Stream, StreamExt};
 use fs_ops::details::Details;
 use fs_ops::favorites::Favorite;
 use fs_ops::ops::{CancelHandle, ConflictHandle, ConflictResolution, OpEvent};
+use fs_ops::search::SearchEvent;
 use fs_ops::session::Session;
 use fs_ops::settings::{ColorTheme, FontSize, IconStyle, Settings, ViewMode};
 use fs_ops::user_dirs::UserDir;
 use fs_ops::EntryKind;
 
 use crate::file_item::{format_modified, format_size, ListingOptions};
+use crate::find::{FindState, FindStatus};
 use crate::fl;
 use crate::keybinds::{default_keybinds, Action};
 use crate::launch::{self, open_with_default_app, AppEntry, OpenMode};
@@ -29,7 +31,7 @@ use crate::localize;
 use crate::menu_bar::menu_bar;
 use crate::operation::{OpKind, OperationState};
 use crate::pane::{home_dir, PaneMessage, PaneState, SelectMode};
-use crate::tab::tab_label;
+use crate::tab::{matches_filter, tab_label};
 use crate::themes;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -106,6 +108,14 @@ pub enum Message {
     /// A click on a favorite: highlight it for the keyboard.
     FocusFavorite(usize),
     CloseDrawer,
+    FindPatternChanged(String),
+    FindStart,
+    FindStop,
+    /// Results of the search with this generation (see `FindState`).
+    FindEvent(u64, SearchEvent),
+    FindHighlight(usize),
+    FindGoTo(usize),
+    FindClose,
 }
 
 /// Index of "Skip" in `App::conflict_buttons`: the safe default focus.
@@ -302,6 +312,8 @@ pub struct App {
     favorite_cursor: Option<usize>,
     /// Where the Favorites dialog's keyboard focus is.
     favorite_focus: FavoriteFocus,
+    /// The Find Files dialog, while open.
+    find: Option<FindState>,
     favorite_add_button: widget::Id,
     favorite_close_button: widget::Id,
     favorite_name_input: widget::Id,
@@ -379,7 +391,7 @@ impl App {
                 // Text boxes swallow Escape; still let one press close the
                 // dialog they're in (e.g. Rename), the side panel (e.g. the
                 // Favorites name field), the path editor or the filter.
-                if self.dialog_open() {
+                if self.dialog_open() || self.find.is_some() {
                     return self.on_escape();
                 }
                 if self.drawer.is_some() {
@@ -441,6 +453,17 @@ impl App {
                     // handle input instead of firing global shortcuts underneath it.
                     return Task::none();
                 }
+                if self.find.is_some() {
+                    // Find Files is modal: only Ctrl+F (to close it) and
+                    // Quit get past it.
+                    let action = self.keybinds.iter().find_map(|(bind, action)| {
+                        bind.matches(modifiers, &key, None).then_some(*action)
+                    });
+                    if let Some(action @ (Action::Find | Action::Quit)) = action {
+                        return self.handle_action(action);
+                    }
+                    return self.find_key(modifiers, &key);
+                }
                 if let Some(task) = self.favorites_key(modifiers, &key) {
                     return task;
                 }
@@ -484,11 +507,11 @@ impl App {
                 }
                 OpEvent::Done => {
                     self.operation = None;
-                    self.refresh_after_operation()
+                    self.reload_both_panes()
                 }
                 OpEvent::Cancelled => {
                     self.operation = None;
-                    self.refresh_after_operation()
+                    self.reload_both_panes()
                 }
                 OpEvent::Error(err) => {
                     if let Some(op) = &mut self.operation {
@@ -546,7 +569,7 @@ impl App {
                 if let Err(err) = result {
                     eprintln!("rename failed: {err}");
                 }
-                self.refresh_after_operation()
+                self.reload_both_panes()
             }
             Message::NewFolderInputChanged(value) => {
                 if let Some(new_folder) = &mut self.new_folder {
@@ -572,7 +595,7 @@ impl App {
                 if let Err(err) = result {
                     eprintln!("failed to create folder: {err}");
                 }
-                self.refresh_after_operation()
+                self.reload_both_panes()
             }
             Message::ResolveConflict(resolution) => {
                 self.pending_conflict = None;
@@ -766,6 +789,56 @@ impl App {
                 self.close_drawer();
                 Task::none()
             }
+            Message::FindPatternChanged(pattern) => {
+                if let Some(find) = &mut self.find {
+                    find.pattern = pattern;
+                    find.input_focused = true;
+                }
+                Task::none()
+            }
+            Message::FindStart => self.start_find(),
+            Message::FindStop => {
+                if let Some(find) = &self.find {
+                    find.cancel.cancel();
+                }
+                Task::none()
+            }
+            Message::FindEvent(generation, event) => {
+                let Some(find) = &mut self.find else {
+                    return Task::none();
+                };
+                if find.generation != generation {
+                    return Task::none(); // From a search since replaced.
+                }
+                match event {
+                    SearchEvent::Found(hits) => find.hits.extend(hits),
+                    SearchEvent::Done { truncated } => {
+                        find.status = FindStatus::Done { truncated };
+                    }
+                }
+                Task::none()
+            }
+            Message::FindHighlight(index) => {
+                if let Some(find) = &mut self.find {
+                    find.cursor = Some(index);
+                    find.input_focused = false;
+                }
+                unfocus_text_fields()
+            }
+            Message::FindGoTo(index) => {
+                let Some(find) = self.find.take() else {
+                    return Task::none();
+                };
+                find.cancel.cancel();
+                match find.hits.into_iter().nth(index) {
+                    Some(hit) => self.pane_mut(self.active_pane).reveal(hit.path),
+                    None => Task::none(),
+                }
+            }
+            Message::FindClose => {
+                self.close_find();
+                Task::none()
+            }
         }
     }
 
@@ -815,7 +888,7 @@ impl App {
         self.pane_mut(id).activate();
     }
 
-    fn refresh_after_operation(&mut self) -> Task<Message> {
+    fn reload_both_panes(&mut self) -> Task<Message> {
         Task::batch(vec![self.left.reload(), self.right.reload()])
     }
 
@@ -1014,6 +1087,8 @@ impl App {
                 self.toggle_drawer(DrawerPage::Settings);
                 Task::none()
             }
+            Action::Refresh => self.reload_both_panes(),
+            Action::Find => self.toggle_find(),
             Action::ToggleHiddenFiles => {
                 self.set_hide_hidden_files(!self.settings.hide_hidden_files)
             }
@@ -1345,6 +1420,100 @@ impl App {
     fn close_drawer(&mut self) {
         self.drawer = None;
         self.core.set_show_context(false);
+    }
+
+    /// Opens the Find Files dialog on the active panel's folder, or closes it.
+    fn toggle_find(&mut self) -> Task<Message> {
+        if self.find.is_some() {
+            self.close_find();
+            return Task::none();
+        }
+        self.close_drawer();
+        let find = FindState::new(self.pane(self.active_pane).current_dir());
+        let focus = widget::text_input::focus(find.input_id.clone());
+        self.find = Some(find);
+        focus
+    }
+
+    fn close_find(&mut self) {
+        if let Some(find) = self.find.take() {
+            find.cancel.cancel();
+        }
+    }
+
+    /// Starts searching for the typed name (stopping any search still running).
+    fn start_find(&mut self) -> Task<Message> {
+        let include_hidden = !self.settings.hide_hidden_files;
+        let Some(find) = &mut self.find else {
+            return Task::none();
+        };
+        let pattern = find.pattern.trim().to_string();
+        if pattern.is_empty() {
+            return Task::none();
+        }
+        find.cancel.cancel();
+        find.cancel = CancelHandle::new();
+        find.generation += 1;
+        find.hits.clear();
+        find.cursor = None;
+        find.status = FindStatus::Searching;
+        let generation = find.generation;
+        let search = fs_ops::search::search(
+            find.root.clone(),
+            move |name| matches_filter(name, &pattern),
+            include_hidden,
+            crate::find::RESULT_LIMIT,
+            find.cancel.clone(),
+        );
+        cosmic::task::stream(search.map(move |event| Message::FindEvent(generation, event)))
+    }
+
+    /// Keys while Find Files is open: Tab switches between the name field
+    /// and the results; in the results ↑/↓, PageUp/PageDown and Home/End
+    /// move the highlight and Enter opens it. The name field handles its
+    /// own typing (Enter there searches).
+    fn find_key(&mut self, modifiers: Modifiers, key: &Key) -> Task<Message> {
+        let Some(find) = &mut self.find else {
+            return Task::none();
+        };
+        let tab = *key == Key::Named(Named::Tab)
+            && (modifiers.is_empty() || modifiers == Modifiers::SHIFT);
+        let down_from_input =
+            find.input_focused && modifiers.is_empty() && *key == Key::Named(Named::ArrowDown);
+        if tab || down_from_input {
+            if find.input_focused && !find.hits.is_empty() {
+                find.input_focused = false;
+                find.cursor = find.cursor.or(Some(0));
+                return Task::batch([unfocus_text_fields(), find.move_cursor(0)]);
+            }
+            if !find.input_focused {
+                find.input_focused = true;
+                return widget::text_input::focus(find.input_id.clone());
+            }
+            return Task::none();
+        }
+        if find.input_focused || !modifiers.is_empty() {
+            return Task::none();
+        }
+        let page = crate::find::page_rows();
+        match key {
+            Key::Named(Named::ArrowUp) if find.cursor == Some(0) => {
+                // Up from the first result goes back to the name field.
+                find.input_focused = true;
+                widget::text_input::focus(find.input_id.clone())
+            }
+            Key::Named(Named::ArrowDown) => find.move_cursor(1),
+            Key::Named(Named::ArrowUp) => find.move_cursor(-1),
+            Key::Named(Named::PageDown) => find.move_cursor(page),
+            Key::Named(Named::PageUp) => find.move_cursor(-page),
+            Key::Named(Named::Home) => find.move_cursor(isize::MIN / 2),
+            Key::Named(Named::End) => find.move_cursor(isize::MAX / 2),
+            Key::Named(Named::Enter) => match find.cursor {
+                Some(index) => self.update(Message::FindGoTo(index)),
+                None => Task::none(),
+            },
+            _ => Task::none(),
+        }
     }
 
     fn settings_page(&self) -> Element<'_, Message> {
@@ -1777,6 +1946,7 @@ impl Application for App {
             favorite_name: String::new(),
             favorite_cursor: None,
             favorite_focus: FavoriteFocus::List,
+            find: None,
             favorite_add_button: widget::Id::unique(),
             favorite_close_button: widget::Id::unique(),
             favorite_name_input: widget::Id::unique(),
@@ -1824,11 +1994,11 @@ impl Application for App {
     }
 
     fn header_start(&self) -> Vec<Element<'_, Message>> {
-        vec![menu_bar(
+        menu_bar(
             &self.keybinds,
             self.clipboard.is_some(),
             self.pane(self.active_pane).view_mode(),
-        )]
+        )
     }
 
     fn context_drawer(&self) -> Option<ContextDrawer<'_, Message>> {
@@ -1863,6 +2033,10 @@ impl Application for App {
             if let Some(op) = &self.operation {
                 op.conflict.respond(ConflictResolution::Skip);
             }
+            return Task::none();
+        }
+        if self.find.is_some() {
+            self.close_find();
             return Task::none();
         }
         if self.pane_mut(self.active_pane).cancel_path_edit() {
@@ -1960,6 +2134,10 @@ impl Application for App {
 
         if let Some(details) = &self.details {
             return Some(details_dialog(details));
+        }
+
+        if let Some(find) = &self.find {
+            return Some(crate::find::view(find));
         }
 
         if self.drawer == Some(DrawerPage::Favorites) {
@@ -2458,7 +2636,10 @@ fn unfocus_text_fields() -> Task<Message> {
 
 /// The keyboard highlight for a list row: the accent color, like a selected
 /// file in the listing.
-fn highlight_style(theme: &cosmic::Theme, highlighted: bool) -> widget::container::Style {
+pub(crate) fn highlight_style(
+    theme: &cosmic::Theme,
+    highlighted: bool,
+) -> widget::container::Style {
     if !highlighted {
         return widget::container::Style::default();
     }

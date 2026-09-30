@@ -65,6 +65,7 @@ tooltip-back = Back (Alt+←)
 tooltip-forward = Forward (Alt+→)
 tooltip-up = Up one folder (Backspace)
 tooltip-new-tab = New tab (Ctrl+T)
+tooltip-refresh = Refresh both panels (Ctrl+R)
 tooltip-edit-path = Edit path (Ctrl+L)
 tooltip-cancel-esc = Cancel (Esc)
 no-tab-open = No tab open
@@ -179,3 +180,20 @@ details-unknown = Unknown
 kind-folder = Folder
 kind-file = File
 kind-symlink = Symbolic link
+
+## Find Files dialog
+find = Find files
+tooltip-find = Find files (Ctrl+F)
+find-in = In { $path } and its subfolders
+find-placeholder = Name or pattern (e.g. report or *.pdf)
+find-search = Search
+find-stop = Stop
+find-hint = Type part of a name and press Enter.
+find-searching = Searching… { $count } found
+find-results = { $count ->
+    [one] 1 result
+   *[other] { $count } results
+}
+find-no-results = Nothing found.
+find-truncated = Showing the first { $count } results; try a more specific name.
+find-go-to = Go to file

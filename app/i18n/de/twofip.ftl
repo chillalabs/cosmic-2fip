@@ -65,6 +65,7 @@ tooltip-back = Zurück (Alt+←)
 tooltip-forward = Vorwärts (Alt+→)
 tooltip-up = Übergeordneter Ordner (Rücktaste)
 tooltip-new-tab = Neuer Tab (Ctrl+T)
+tooltip-refresh = Beide Bereiche aktualisieren (Ctrl+R)
 tooltip-edit-path = Pfad bearbeiten (Ctrl+L)
 tooltip-cancel-esc = Abbrechen (Esc)
 no-tab-open = Kein Tab geöffnet
@@ -179,3 +180,20 @@ details-unknown = Unbekannt
 kind-folder = Ordner
 kind-file = Datei
 kind-symlink = Symbolischer Link
+
+## Dialog „Dateien suchen“
+find = Dateien suchen
+tooltip-find = Dateien suchen (Ctrl+F)
+find-in = In { $path } und seinen Unterordnern
+find-placeholder = Name oder Muster (z. B. bericht oder *.pdf)
+find-search = Suchen
+find-stop = Anhalten
+find-hint = Geben Sie einen Teil des Namens ein und drücken Sie Enter.
+find-searching = Suche läuft… { $count } gefunden
+find-results = { $count ->
+    [one] 1 Ergebnis
+   *[other] { $count } Ergebnisse
+}
+find-no-results = Nichts gefunden.
+find-truncated = Die ersten { $count } Ergebnisse werden angezeigt; versuchen Sie einen genaueren Namen.
+find-go-to = Zur Datei

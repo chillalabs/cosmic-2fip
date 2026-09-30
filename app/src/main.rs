@@ -2,6 +2,7 @@ mod app;
 mod context_menu;
 mod dnd;
 mod file_item;
+mod find;
 mod keybinds;
 mod launch;
 mod localize;

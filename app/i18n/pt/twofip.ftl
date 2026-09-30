@@ -25,6 +25,7 @@ op-files-done = { $done } de { $total } ficheiros
 op-preparing = A preparar…
 
 tooltip-new-tab = Novo separador (Ctrl+T)
+tooltip-refresh = Atualizar os dois painéis (Ctrl+R)
 no-tab-open = Nenhum separador aberto
 filter-placeholder = Filtrar (p. ex. relatorio ou *.txt)
 path-placeholder = Escreva o caminho de uma pasta
@@ -69,3 +70,11 @@ other-apps = Outras aplicações
 details-calculating = A calcular…
 details-contents = { $files } ficheiros e { $folders } pastas no interior
 kind-file = Ficheiro
+
+## Diálogo Procurar ficheiros
+find = Procurar ficheiros
+tooltip-find = Procurar ficheiros (Ctrl+F)
+find-hint = Escreva parte de um nome e prima Enter.
+find-searching = A pesquisar… { $count } encontrados
+find-truncated = A mostrar os primeiros { $count } resultados; experimente um nome mais específico.
+find-go-to = Ir para o ficheiro

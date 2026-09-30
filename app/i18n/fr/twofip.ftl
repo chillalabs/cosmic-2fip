@@ -65,6 +65,7 @@ tooltip-back = Précédent (Alt+←)
 tooltip-forward = Suivant (Alt+→)
 tooltip-up = Dossier parent (Retour arrière)
 tooltip-new-tab = Nouvel onglet (Ctrl+T)
+tooltip-refresh = Actualiser les deux panneaux (Ctrl+R)
 tooltip-edit-path = Modifier le chemin (Ctrl+L)
 tooltip-cancel-esc = Annuler (Échap)
 no-tab-open = Aucun onglet ouvert
@@ -179,3 +180,20 @@ details-unknown = Inconnu
 kind-folder = Dossier
 kind-file = Fichier
 kind-symlink = Lien symbolique
+
+## Boîte de dialogue Rechercher des fichiers
+find = Rechercher des fichiers
+tooltip-find = Rechercher des fichiers (Ctrl+F)
+find-in = Dans { $path } et ses sous-dossiers
+find-placeholder = Nom ou motif (p. ex. rapport ou *.pdf)
+find-search = Rechercher
+find-stop = Arrêter
+find-hint = Saisissez une partie d’un nom et appuyez sur Entrée.
+find-searching = Recherche… { $count } trouvés
+find-results = { $count ->
+    [one] 1 résultat
+   *[other] { $count } résultats
+}
+find-no-results = Aucun résultat.
+find-truncated = Affichage des { $count } premiers résultats ; essayez un nom plus précis.
+find-go-to = Aller au fichier

@@ -25,6 +25,8 @@ desktop, inspired by Total Commander. Written in Rust with
 - **Color themes**: follow the desktop, or pick Light, Dark, Dracula, Nord,
   Catppuccin, Gruvbox, Tokyo Night, Solarized and more.
 - **Drag and drop** between the panels and other apps.
+- **Find files** (Ctrl+F) by name or pattern (`*.pdf`) in the active folder and
+  its subfolders; jump to a result with Enter or a double-click.
 
 ## Keyboard
 
@@ -46,6 +48,8 @@ desktop, inspired by Total Commander. Written in Rust with
 | Ctrl+T / Ctrl+W, Ctrl+Tab | New / close tab, next tab |
 | Ctrl+1 / Ctrl+2 | List / grid view |
 | Ctrl+H | Show / hide hidden files |
+| Ctrl+R | Refresh both panels |
+| Ctrl+F | Find files in the active folder and its subfolders |
 | Alt+Enter | File details |
 | Ctrl+, | Settings |
 | Ctrl+Q, Alt+F4 | Quit |

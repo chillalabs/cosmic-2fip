@@ -67,6 +67,7 @@ tooltip-back = Atrás (Alt+←)
 tooltip-forward = Adelante (Alt+→)
 tooltip-up = Subir una carpeta (Retroceso)
 tooltip-new-tab = Nueva pestaña (Ctrl+T)
+tooltip-refresh = Actualizar ambos paneles (Ctrl+R)
 tooltip-edit-path = Editar ruta (Ctrl+L)
 tooltip-cancel-esc = Cancelar (Esc)
 no-tab-open = No hay pestañas abiertas
@@ -181,3 +182,20 @@ details-unknown = Desconocido
 kind-folder = Carpeta
 kind-file = Archivo
 kind-symlink = Enlace simbólico
+
+## Diálogo Buscar archivos
+find = Buscar archivos
+tooltip-find = Buscar archivos (Ctrl+F)
+find-in = En { $path } y sus subcarpetas
+find-placeholder = Nombre o patrón (p. ej. informe o *.pdf)
+find-search = Buscar
+find-stop = Detener
+find-hint = Escribe parte de un nombre y presiona Enter.
+find-searching = Buscando… { $count } encontrados
+find-results = { $count ->
+    [one] 1 resultado
+   *[other] { $count } resultados
+}
+find-no-results = No se encontró nada.
+find-truncated = Se muestran los primeros { $count } resultados; prueba un nombre más específico.
+find-go-to = Ir al archivo
