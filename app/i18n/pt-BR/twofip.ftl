@@ -199,3 +199,10 @@ find-results = { $count ->
 find-no-results = Nada encontrado.
 find-truncated = Mostrando os primeiros { $count } resultados; tente um nome mais específico.
 find-go-to = Ir para o arquivo
+
+## Janela Sobre
+about-2fip = Sobre o 2fip
+about-description = Um gerenciador de arquivos de dois painéis, feito para o teclado e inspirado no Total Commander.
+about-version = Versão:
+about-repository = Repositório:
+about-license = Licença:

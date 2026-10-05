@@ -1,3 +1,4 @@
+mod about;
 mod app;
 mod context_menu;
 mod dnd;

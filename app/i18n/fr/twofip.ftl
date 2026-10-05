@@ -197,3 +197,10 @@ find-results = { $count ->
 find-no-results = Aucun résultat.
 find-truncated = Affichage des { $count } premiers résultats ; essayez un nom plus précis.
 find-go-to = Aller au fichier
+
+## Fenêtre À propos
+about-2fip = À propos de 2fip
+about-description = Un gestionnaire de fichiers à deux panneaux, pensé pour le clavier et inspiré de Total Commander.
+about-version = Version :
+about-repository = Dépôt :
+about-license = Licence :

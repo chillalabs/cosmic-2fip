@@ -197,3 +197,10 @@ find-results = { $count ->
 find-no-results = Nichts gefunden.
 find-truncated = Die ersten { $count } Ergebnisse werden angezeigt; versuchen Sie einen genaueren Namen.
 find-go-to = Zur Datei
+
+## Fenster „Über“
+about-2fip = Über 2fip
+about-description = Ein tastaturgesteuerter Dateimanager mit zwei Bereichen, inspiriert von Total Commander.
+about-version = Version:
+about-repository = Repository:
+about-license = Lizenz:

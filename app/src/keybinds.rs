@@ -76,6 +76,8 @@ pub enum Action {
     Refresh,
     /// Ctrl+F: the Find Files dialog.
     Find,
+    /// View → About 2fip (no shortcut).
+    About,
     Quit,
 }
 

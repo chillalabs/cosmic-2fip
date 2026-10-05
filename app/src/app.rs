@@ -108,6 +108,8 @@ pub enum Message {
     /// A click on a favorite: highlight it for the keyboard.
     FocusFavorite(usize),
     CloseDrawer,
+    /// Opens a web address in the default browser.
+    OpenUrl(&'static str),
     FindPatternChanged(String),
     FindStart,
     FindStop,
@@ -143,7 +145,6 @@ enum FavoriteFocus {
 /// and caption (12).
 const FAVORITES_NAME_SIZE: f32 = 13.0;
 const FAVORITES_PATH_SIZE: f32 = 11.0;
-const FAVORITES_DIALOG_WIDTH: f32 = 620.0;
 const FAVORITES_LIST_MAX_HEIGHT: f32 = 360.0;
 
 /// The Settings panel's rows, top to bottom, for keyboard navigation.
@@ -240,6 +241,7 @@ fn icon_style_name(style: IconStyle) -> String {
 enum DrawerPage {
     Settings,
     Favorites,
+    About,
 }
 
 /// Paths put aside by Cut/Copy, waiting for a Paste.
@@ -479,7 +481,7 @@ impl App {
                 if self.drawer.is_some()
                     && !matches!(
                         action,
-                        Some(Action::Favorites | Action::Settings | Action::Quit)
+                        Some(Action::Favorites | Action::Settings | Action::About | Action::Quit)
                     )
                 {
                     return Task::none();
@@ -797,6 +799,10 @@ impl App {
                 Task::none()
             }
             Message::FindStart => self.start_find(),
+            Message::OpenUrl(url) => {
+                launch::open_with_default_app(std::path::Path::new(url));
+                Task::none()
+            }
             Message::FindStop => {
                 if let Some(find) = &self.find {
                     find.cancel.cancel();
@@ -1089,6 +1095,7 @@ impl App {
             }
             Action::Refresh => self.reload_both_panes(),
             Action::Find => self.toggle_find(),
+            Action::About => self.toggle_about(),
             Action::ToggleHiddenFiles => {
                 self.set_hide_hidden_files(!self.settings.hide_hidden_files)
             }
@@ -1147,9 +1154,7 @@ impl App {
             self.close_drawer();
         } else {
             self.drawer = Some(page);
-            // Settings slides in from the right; Favorites is a centered
-            // dialog (see `dialog`).
-            self.core.set_show_context(page == DrawerPage::Settings);
+            self.core.set_show_context(true);
             if page == DrawerPage::Settings {
                 self.settings_cursor = 0;
             }
@@ -1422,6 +1427,13 @@ impl App {
         self.core.set_show_context(false);
     }
 
+    /// Shows the About side panel, or closes it.
+    fn toggle_about(&mut self) -> Task<Message> {
+        self.close_find();
+        self.toggle_drawer(DrawerPage::About);
+        Task::none()
+    }
+
     /// Opens the Find Files dialog on the active panel's folder, or closes it.
     fn toggle_find(&mut self) -> Task<Message> {
         if self.find.is_some() {
@@ -1616,10 +1628,9 @@ impl App {
         widget::settings::view_column(vec![general.into(), theme.into()]).into()
     }
 
-    /// The Favorites dialog, centered over the window. Its text is a step
-    /// smaller than libcosmic's dialog and settings defaults, so long folder
-    /// paths fit.
-    fn favorites_dialog(&self) -> Element<'_, Message> {
+    /// The Favorites side panel. Its text is a step smaller than
+    /// libcosmic's settings defaults, so long folder paths fit.
+    fn favorites_page(&self) -> Element<'_, Message> {
         let mut saved = widget::Column::new().spacing(2);
         if self.favorites.is_empty() {
             saved = saved.push(widget::text(fl!("favorites-empty")).size(FAVORITES_NAME_SIZE));
@@ -1697,19 +1708,14 @@ impl App {
                     ),
             );
 
-        let content = widget::Column::new()
+        widget::Column::new()
             .spacing(12)
-            .push(widget::text::title4(fl!("favorites")))
             .push(widget::text::caption_heading(fl!("favorites-saved")))
             .push(
                 widget::container(widget::scrollable(saved)).max_height(FAVORITES_LIST_MAX_HEIGHT),
             )
             .push(widget::divider::horizontal::light())
-            .push(add);
-
-        widget::dialog()
-            .width(Length::Fixed(FAVORITES_DIALOG_WIDTH))
-            .control(content)
+            .push(add)
             .into()
     }
 
@@ -2007,7 +2013,15 @@ impl Application for App {
                 context_drawer::context_drawer(self.settings_page(), Message::CloseDrawer)
                     .title(fl!("settings"))
             }
-            DrawerPage::Favorites => return None,
+            DrawerPage::Favorites => {
+                context_drawer::context_drawer(self.favorites_page(), Message::CloseDrawer)
+                    .title(fl!("favorites"))
+            }
+            DrawerPage::About => context_drawer::context_drawer(
+                crate::about::view(Self::APP_ID),
+                Message::CloseDrawer,
+            )
+            .title(fl!("about-2fip")),
         };
         Some(drawer)
     }
@@ -2138,10 +2152,6 @@ impl Application for App {
 
         if let Some(find) = &self.find {
             return Some(crate::find::view(find));
-        }
-
-        if self.drawer == Some(DrawerPage::Favorites) {
-            return Some(self.favorites_dialog());
         }
 
         if let Some(new_folder) = &self.new_folder {

@@ -197,3 +197,10 @@ find-results = { $count ->
 find-no-results = Nothing found.
 find-truncated = Showing the first { $count } results; try a more specific name.
 find-go-to = Go to file
+
+## About window
+about-2fip = About 2fip
+about-description = A keyboard-driven, dual-pane file manager, inspired by Total Commander.
+about-version = Version:
+about-repository = Repository:
+about-license = License:

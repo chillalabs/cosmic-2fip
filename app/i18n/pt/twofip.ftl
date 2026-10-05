@@ -78,3 +78,6 @@ find-hint = Escreva parte de um nome e prima Enter.
 find-searching = A pesquisar… { $count } encontrados
 find-truncated = A mostrar os primeiros { $count } resultados; experimente um nome mais específico.
 find-go-to = Ir para o ficheiro
+
+## Janela Sobre
+about-description = Um gestor de ficheiros de dois painéis, pensado para o teclado e inspirado no Total Commander.

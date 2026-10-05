@@ -110,6 +110,8 @@ pub fn menu_bar<'a>(
             "preferences-system-symbolic",
             Action::Settings,
         ),
+        MenuItem::Divider,
+        button(fl!("about-2fip"), "help-about-symbolic", Action::About),
     ];
 
     let bar = menu::bar(vec![
