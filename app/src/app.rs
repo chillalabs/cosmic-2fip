@@ -1889,7 +1889,7 @@ impl Application for App {
     type Executor = cosmic::executor::Default;
     type Flags = ();
     type Message = Message;
-    const APP_ID: &'static str = "io.github.gonzaloism.TwoFip";
+    const APP_ID: &'static str = "io.github.chillalabs.TwoFip";
 
     fn core(&self) -> &Core {
         &self.core

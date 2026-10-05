@@ -30,8 +30,8 @@ release:
 # Install for the current user (~/.local): binary, launcher entry and icon.
 install: release
     SOURCE_BIN=target/release/2fip \
-    SOURCE_DESKTOP=res/io.github.gonzaloism.TwoFip.desktop \
-    SOURCE_ICON=res/icons/hicolor/scalable/apps/io.github.gonzaloism.TwoFip.svg \
+    SOURCE_DESKTOP=res/io.github.chillalabs.TwoFip.desktop \
+    SOURCE_ICON=res/icons/hicolor/scalable/apps/io.github.chillalabs.TwoFip.svg \
     res/install.sh
 
 uninstall:
@@ -46,8 +46,8 @@ package: release
     stage="dist/$name"
     rm -rf "$stage"
     install -Dm755 target/release/2fip "$stage/bin/2fip"
-    install -Dm644 res/io.github.gonzaloism.TwoFip.desktop "$stage/share/applications/io.github.gonzaloism.TwoFip.desktop"
-    install -Dm644 res/icons/hicolor/scalable/apps/io.github.gonzaloism.TwoFip.svg "$stage/share/icons/hicolor/scalable/apps/io.github.gonzaloism.TwoFip.svg"
+    install -Dm644 res/io.github.chillalabs.TwoFip.desktop "$stage/share/applications/io.github.chillalabs.TwoFip.desktop"
+    install -Dm644 res/icons/hicolor/scalable/apps/io.github.chillalabs.TwoFip.svg "$stage/share/icons/hicolor/scalable/apps/io.github.chillalabs.TwoFip.svg"
     install -Dm755 res/install.sh "$stage/install.sh"
     tar -C dist -czf "dist/$name.tar.gz" "$name"
     rm -rf "$stage"

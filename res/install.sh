@@ -4,7 +4,7 @@
 # Run from the unpacked package folder, or via `just install` from the repo.
 set -eu
 
-APP_ID=io.github.gonzaloism.TwoFip
+APP_ID=io.github.chillalabs.TwoFip
 PREFIX="${PREFIX:-$HOME/.local}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
