@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what software stores (Flathub, COSMIC Store) show. -->
+<component type="desktop-application">
+  <id>io.github.chillalabs.TwoFip</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+
+  <name>2fip</name>
+  <summary>Dual-pane file manager inspired by Total Commander</summary>
+  <description>
+    <p>
+      2fip (2 File Panel) is a keyboard-driven, dual-pane file manager for the
+      COSMIC desktop, inspired by Total Commander.
+    </p>
+    <ul>
+      <li>Two panels with tabs, each with its own folder, history and view</li>
+      <li>Classic function keys: F5 copy, F6 move, F7 new folder, F8 delete</li>
+      <li>Copy, move, delete and compress in the background, with progress</li>
+      <li>List view with Name, Ext, Size and Modified columns, or a grid view</li>
+      <li>Thumbnails, quick filter, favorites, folder sizes and Find Files</li>
+      <li>Drag and drop between the panels and other apps</li>
+      <li>Color themes, and translations into several languages</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.chillalabs.TwoFip.desktop</launchable>
+  <provides>
+    <binary>2fip</binary>
+  </provides>
+
+  <developer id="io.github.chillalabs">
+    <name>chillalabs</name>
+  </developer>
+
+  <url type="homepage">https://github.com/chillalabs/cosmic-2fip</url>
+  <url type="bugtracker">https://github.com/chillalabs/cosmic-2fip/issues</url>
+  <url type="vcs-browser">https://github.com/chillalabs/cosmic-2fip</url>
+
+  <categories>
+    <category>System</category>
+    <category>FileTools</category>
+    <category>FileManager</category>
+  </categories>
+  <keywords>
+    <keyword>files</keyword>
+    <keyword>file manager</keyword>
+    <keyword>commander</keyword>
+    <keyword>dual pane</keyword>
+  </keywords>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#44adc0</color>
+    <color type="primary" scheme_preference="dark">#1e1e2e</color>
+  </branding>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-10-05">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

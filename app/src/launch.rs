@@ -31,6 +31,35 @@ pub fn open_with_default_app(path: &Path) {
     }
 }
 
+/// Asks the desktop to let the user pick an app for `path` and open it there
+/// (the portal's own "Open With" chooser). In a Flatpak, 2fip can't see the
+/// installed apps itself. Blocking.
+pub fn open_with_portal(path: &Path) {
+    if let Err(err) = call_open_file_portal(path) {
+        eprintln!("failed to open {} with the portal: {err}", path.display());
+    }
+}
+
+fn call_open_file_portal(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use std::collections::HashMap;
+    use zbus::zvariant::{Fd, Value};
+
+    let file = std::fs::File::open(path)?;
+    let connection = zbus::blocking::Connection::session()?;
+    let mut options: HashMap<&str, Value> = HashMap::new();
+    // Show the chooser even if the type has a default app.
+    options.insert("ask", Value::from(true));
+    connection.call_method(
+        Some("org.freedesktop.portal.Desktop"),
+        "/org/freedesktop/portal/desktop",
+        Some("org.freedesktop.portal.OpenURI"),
+        "OpenFile",
+        // No parent window handle.
+        &("", Fd::from(&file), options),
+    )?;
+    Ok(())
+}
+
 /// Opens the user's default terminal with `dir` as its working directory.
 /// Fire-and-forget, output discarded, like [`open_with_default_app`].
 pub fn open_terminal(dir: &Path) {

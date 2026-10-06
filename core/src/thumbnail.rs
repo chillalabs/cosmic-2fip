@@ -74,12 +74,9 @@ fn mtime_secs(path: &Path) -> Option<u64> {
     Some(modified.duration_since(UNIX_EPOCH).ok()?.as_secs())
 }
 
+/// The shared thumbnail cache (in a Flatpak too, see [`crate::sandbox`]).
 fn cache_dir() -> Option<PathBuf> {
-    let base = match std::env::var_os("XDG_CACHE_HOME") {
-        Some(dir) => PathBuf::from(dir),
-        None => PathBuf::from(std::env::var_os("HOME")?).join(".cache"),
-    };
-    Some(base.join("thumbnails"))
+    Some(crate::sandbox::cache_home().join("thumbnails"))
 }
 
 /// Whether `thumb` exists and was made from the file's current version.

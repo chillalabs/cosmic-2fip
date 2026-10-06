@@ -159,15 +159,9 @@ pub(crate) fn config_dir() -> PathBuf {
     config_base().join(APP_DIR)
 }
 
-/// `$XDG_CONFIG_HOME`, or `~/.config`.
+/// `$XDG_CONFIG_HOME`, or `~/.config` (see [`crate::sandbox`] for Flatpak).
 fn config_base() -> PathBuf {
-    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(xdg);
-    }
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"));
-    home.join(".config")
+    crate::sandbox::config_home()
 }
 
 /// Moves the settings, favorites and session saved under one of the app's old

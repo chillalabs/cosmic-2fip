@@ -2,3 +2,6 @@
 **/*.rs.bk
 *.pdb
 /dist
+/.flatpak-builder
+/flatpak/build
+/flatpak/repo

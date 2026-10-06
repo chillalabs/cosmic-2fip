@@ -52,3 +52,15 @@ package: release
     tar -C dist -czf "dist/$name.tar.gz" "$name"
     rm -rf "$stage"
     echo "Created dist/$name.tar.gz"
+
+# Build the Flatpak from this checkout and install it for the current user
+# (needs: flatpak install flathub org.flatpak.Builder). Run it with
+# `flatpak run io.github.chillalabs.TwoFip`.
+flatpak:
+    flatpak run org.flatpak.Builder --user --install --force-clean \
+        --state-dir=.flatpak-builder flatpak/build flatpak/io.github.chillalabs.TwoFip.yml
+
+# Re-create flatpak/cargo-sources.json after Cargo.lock changes (needs
+# flatpak-cargo-generator.py from flatpak/flatpak-builder-tools).
+flatpak-sources generator="flatpak-cargo-generator.py":
+    python3 {{generator}} Cargo.lock -o flatpak/cargo-sources.json

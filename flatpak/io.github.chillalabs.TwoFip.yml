@@ -1,0 +1,47 @@
+# Flatpak build recipe. Local build (from this checkout):
+#   just flatpak
+# For Flathub, the `dir` source below becomes a `git` source with a release tag.
+id: io.github.chillalabs.TwoFip
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: 2fip
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # A file manager: the whole file system, like any other.
+  - --filesystem=host
+  # The COSMIC theme and settings libcosmic follows.
+  - --talk-name=com.system76.CosmicSettingsDaemon
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    # Where cargo-sources.json puts the vendored crates.
+    CARGO_HOME: /run/build/2fip/cargo
+    CARGO_NET_OFFLINE: 'true'
+
+modules:
+  - name: 2fip
+    buildsystem: simple
+    build-commands:
+      - cargo --offline build --release -p twofip
+      - install -Dm755 target/release/2fip /app/bin/2fip
+      - install -Dm644 res/io.github.chillalabs.TwoFip.desktop /app/share/applications/io.github.chillalabs.TwoFip.desktop
+      - install -Dm644 res/icons/hicolor/scalable/apps/io.github.chillalabs.TwoFip.svg /app/share/icons/hicolor/scalable/apps/io.github.chillalabs.TwoFip.svg
+      - install -Dm644 res/io.github.chillalabs.TwoFip.metainfo.xml /app/share/metainfo/io.github.chillalabs.TwoFip.metainfo.xml
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - target
+          - dist
+          - .flatpak-builder
+          - flatpak/build
+          - flatpak/repo
+      - cargo-sources.json
