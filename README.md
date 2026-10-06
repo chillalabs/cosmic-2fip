@@ -1,7 +1,7 @@
 # 2fip
 
 A keyboard-driven, dual-pane file manager for the [COSMIC](https://system76.com/cosmic)
-desktop, inspired by Total Commander. Written in Rust with
+desktop, inspired by Total Commander and COSMIC Files. Written in Rust with
 [libcosmic](https://github.com/pop-os/libcosmic).
 
 *2fip* — **2** **Fi**le **P**anel: two file panels, side by side.
