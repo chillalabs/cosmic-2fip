@@ -74,3 +74,32 @@ flatpak-publish site="../chillalabs-flatpak" key="D0A09A1D8E8EDB64":
     flatpak build-export --gpg-sign={{key}} {{site}}/repo flatpak/build stable
     flatpak build-update-repo --gpg-sign={{key}} --generate-static-deltas \
         --prune --prune-depth=5 --title="chillalabs" {{site}}/repo
+
+# Package as dist/2fip-<version>-x86_64.AppImage: one file that runs on most
+# distributions (glibc 2.39+, libxkbcommon). Downloads the official
+# appimagetool from github.com/AppImage the first time.
+appimage: release
+    #!/bin/sh
+    set -eu
+    version=$(cargo pkgid -p twofip | sed 's/.*[#@]//')
+    id=io.github.chillalabs.TwoFip
+    tool="${XDG_CACHE_HOME:-$HOME/.cache}/2fip-build/appimagetool-x86_64.AppImage"
+    if [ ! -x "$tool" ]; then
+        mkdir -p "$(dirname "$tool")"
+        curl -fsSL -o "$tool" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+        chmod +x "$tool"
+    fi
+    appdir=dist/2fip.AppDir
+    rm -rf "$appdir"
+    install -Dm755 target/release/2fip "$appdir/usr/bin/2fip"
+    install -Dm644 res/$id.desktop "$appdir/usr/share/applications/$id.desktop"
+    install -Dm644 res/icons/hicolor/scalable/apps/$id.svg "$appdir/usr/share/icons/hicolor/scalable/apps/$id.svg"
+    install -Dm644 res/$id.metainfo.xml "$appdir/usr/share/metainfo/$id.appdata.xml"
+    cp res/$id.desktop "$appdir/$id.desktop"
+    cp res/icons/hicolor/scalable/apps/$id.svg "$appdir/$id.svg"
+    ln -s $id.svg "$appdir/.DirIcon"
+    printf '#!/bin/sh\nexec "$(dirname "$(readlink -f "$0")")/usr/bin/2fip" "$@"\n' > "$appdir/AppRun"
+    chmod +x "$appdir/AppRun"
+    ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$tool" --no-appstream "$appdir" "dist/2fip-$version-x86_64.AppImage"
+    rm -rf "$appdir"
+    echo "Created dist/2fip-$version-x86_64.AppImage"

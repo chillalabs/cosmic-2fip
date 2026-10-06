@@ -64,6 +64,20 @@ Updates come with `flatpak update`. More at <https://chillalabs.github.io/flatpa
 The Flatpak runs the terminal, other apps and thumbnailers on the host system
 (with `flatpak-spawn --host`), so it works like a regular install.
 
+## AppImage
+
+Download `2fip-<version>-x86_64.AppImage` from the
+[latest release](https://github.com/chillalabs/cosmic-2fip/releases/latest),
+make it executable and run it:
+
+```sh
+chmod +x 2fip-*-x86_64.AppImage
+./2fip-*-x86_64.AppImage
+```
+
+It needs glibc 2.39 or newer (e.g. Pop!_OS / Ubuntu 24.04) and doesn't update
+itself; the Flatpak does.
+
 ## Build and install
 
 Requirements: Rust (stable), [just](https://github.com/casey/just), and the
@@ -76,6 +90,7 @@ just install    # install to ~/.local (binary, launcher entry, icon)
 just uninstall  # remove it again (settings in ~/.config/2fip are kept)
 just package    # dist/2fip-<version>-<arch>.tar.gz for another computer
 just flatpak    # build and install the Flatpak locally
+just appimage   # dist/2fip-<version>-x86_64.AppImage
 ```
 
 To install a package on another computer, unpack it and run `./install.sh`.
