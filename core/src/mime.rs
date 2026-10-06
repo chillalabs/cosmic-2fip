@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::process::Command;
 
 /// Returns the MIME type the desktop associates with `path` (e.g.
 /// `text/plain`, `inode/directory`), as reported by `xdg-mime`, so it matches
@@ -18,7 +17,7 @@ fn guess(path: &Path) -> Option<String> {
 }
 
 fn query_xdg_mime(path: &Path) -> Option<String> {
-    let output = Command::new("xdg-mime")
+    let output = crate::sandbox::host_command("xdg-mime")
         .args(["query", "filetype"])
         .arg(path)
         .output()

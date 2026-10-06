@@ -17,8 +17,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-stream = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 shlex = "1.3"
-# The desktop portal's "Open With" chooser, used in a Flatpak.
-zbus = "5"
 i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
 i18n-embed-fl = "0.10"
 # Embed the translations in debug builds too (by default rust-embed reads

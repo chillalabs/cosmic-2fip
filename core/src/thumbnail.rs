@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -152,7 +152,7 @@ fn run_thumbnailer(exec: &str, path: &Path, uri: &str, output: &Path) -> bool {
     let Some((program, args)) = args.split_first() else {
         return false;
     };
-    let Ok(mut child) = Command::new(program)
+    let Ok(mut child) = crate::sandbox::host_command(program)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -245,17 +245,14 @@ fn add_thumbnail_tags(raw: &Path, tagged: &Path, uri: &str, mtime: u64) -> Optio
 fn thumbnailers() -> &'static HashMap<String, String> {
     static THUMBNAILERS: OnceLock<HashMap<String, String>> = OnceLock::new();
     THUMBNAILERS.get_or_init(|| {
-        let mut dirs: Vec<PathBuf> = std::env::var("XDG_DATA_DIRS")
-            .ok()
-            .filter(|dirs| !dirs.is_empty())
-            .unwrap_or_else(|| "/usr/local/share:/usr/share".to_string())
-            .split(':')
+        // The host's thumbnailers, even in a Flatpak (they run on the host,
+        // see `run_thumbnailer`). Least important first, so the user's own
+        // entries are read last and win.
+        let dirs: Vec<PathBuf> = crate::sandbox::host_data_dirs()
+            .into_iter()
             .rev()
-            .map(|dir| PathBuf::from(dir).join("thumbnailers"))
+            .map(|dir| dir.join("thumbnailers"))
             .collect();
-        if let Some(home) = std::env::var_os("HOME") {
-            dirs.push(PathBuf::from(home).join(".local/share/thumbnailers"));
-        }
 
         let mut map = HashMap::new();
         for dir in dirs {
@@ -301,19 +298,11 @@ fn parse_thumbnailer(contents: &str) -> Option<(String, Vec<String>)> {
         }
     }
     if let Some(program) = try_exec {
-        if !program_exists(&program) {
+        if !crate::sandbox::host_program_exists(&program) {
             return None;
         }
     }
     Some((exec?, mimes))
-}
-
-fn program_exists(program: &str) -> bool {
-    if program.contains('/') {
-        return Path::new(program).is_file();
-    }
-    std::env::var_os("PATH")
-        .is_some_and(|paths| std::env::split_paths(&paths).any(|dir| dir.join(program).is_file()))
 }
 
 /// Seconds since the epoch of `time`, for callers keying caches by mtime.

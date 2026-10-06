@@ -939,11 +939,7 @@ impl App {
                 })
             }
             Action::Terminal => {
-                // A Flatpak can't start the system's terminal (that would
-                // need a sandbox escape), so F9 is off there.
-                if !fs_ops::sandbox::in_flatpak() {
-                    launch::open_terminal(&self.pane(self.active_pane).current_dir());
-                }
+                launch::open_terminal(&self.pane(self.active_pane).current_dir());
                 Task::none()
             }
             Action::Copy => self.start_operation(OpKind::Copy),
@@ -1041,19 +1037,6 @@ impl App {
                 let Some(first) = paths.first().cloned() else {
                     return Task::none();
                 };
-                if fs_ops::sandbox::in_flatpak() {
-                    // The sandbox hides the installed apps: let the desktop's
-                    // own chooser list them, one file at a time.
-                    return cosmic::task::future(async move {
-                        let _ = tokio::task::spawn_blocking(move || {
-                            for path in paths.iter().filter(|path| !path.is_dir()) {
-                                launch::open_with_portal(path);
-                            }
-                        })
-                        .await;
-                        Message::Launched
-                    });
-                }
                 self.open_with = Some(OpenWithState {
                     paths: paths.clone(),
                     apps: None,
@@ -2393,8 +2376,6 @@ fn function_key_bar() -> Element<'static, Message> {
     // button, so build the button around a centered label and make the button
     // itself fill: every key then gets an equal share of the window's width.
     // "F2" etc. stay as they are; only the action's name is translated.
-    // F9 is off in a Flatpak (see `Action::Terminal`).
-    let terminal_available = !fs_ops::sandbox::in_flatpak();
     let key_button = |key: &str, label: String, action: Action| {
         let label = format!("{key} {label}");
         widget::button::custom(
@@ -2405,9 +2386,7 @@ fn function_key_bar() -> Element<'static, Message> {
         .class(cosmic::theme::Button::Standard)
         .padding([6, 4])
         .width(Length::Fill)
-        .on_press_maybe(
-            (action != Action::Terminal || terminal_available).then_some(Message::Action(action)),
-        )
+        .on_press(Message::Action(action))
     };
 
     widget::Row::new()

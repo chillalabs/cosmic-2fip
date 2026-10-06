@@ -61,8 +61,8 @@ flatpak install --user https://chillalabs.github.io/flatpak/2fip.flatpakref
 ```
 
 Updates come with `flatpak update`. More at <https://chillalabs.github.io/flatpak/>.
-In the Flatpak, F9 (terminal) is off and Open With uses the desktop's app
-chooser, since the sandbox can't start other programs directly.
+The Flatpak runs the terminal, other apps and thumbnailers on the host system
+(with `flatpak-spawn --host`), so it works like a regular install.
 
 ## Build and install
 

@@ -64,6 +64,17 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.1.1" date="2026-10-06">
+      <description>
+        <p>The Flatpak now works like a regular install:</p>
+        <ul>
+          <li>F9 opens the terminal</li>
+          <li>Open With lists all installed apps, including other Flatpak apps</li>
+          <li>F4 opens the text editor again</li>
+          <li>Thumbnails for PDFs and videos</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-10-05">
       <description>
         <p>First release.</p>

@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use cosmic::desktop::{fde, IconSourceExt};
+use cosmic::desktop::{fde, DesktopEntryData, IconSourceExt};
 use cosmic::widget::icon;
 
 /// Launches `path` with whatever application the desktop has associated with
@@ -14,8 +14,9 @@ use cosmic::widget::icon;
 /// own console output is discarded so it doesn't flood our terminal (the
 /// "Open With" path does the same, via libcosmic).
 pub fn open_with_default_app(path: &Path) {
-    use std::process::{Command, Stdio};
-    let spawned = Command::new("xdg-open")
+    use std::process::Stdio;
+    // On the host in a Flatpak, so the system's default apps are used.
+    let spawned = fs_ops::sandbox::host_command("xdg-open")
         .arg(path)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -31,47 +32,17 @@ pub fn open_with_default_app(path: &Path) {
     }
 }
 
-/// Asks the desktop to let the user pick an app for `path` and open it there
-/// (the portal's own "Open With" chooser). In a Flatpak, 2fip can't see the
-/// installed apps itself. Blocking.
-pub fn open_with_portal(path: &Path) {
-    if let Err(err) = call_open_file_portal(path) {
-        eprintln!("failed to open {} with the portal: {err}", path.display());
-    }
-}
-
-fn call_open_file_portal(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use std::collections::HashMap;
-    use zbus::zvariant::{Fd, Value};
-
-    let file = std::fs::File::open(path)?;
-    let connection = zbus::blocking::Connection::session()?;
-    let mut options: HashMap<&str, Value> = HashMap::new();
-    // Show the chooser even if the type has a default app.
-    options.insert("ask", Value::from(true));
-    connection.call_method(
-        Some("org.freedesktop.portal.Desktop"),
-        "/org/freedesktop/portal/desktop",
-        Some("org.freedesktop.portal.OpenURI"),
-        "OpenFile",
-        // No parent window handle.
-        &("", Fd::from(&file), options),
-    )?;
-    Ok(())
-}
-
 /// Opens the user's default terminal with `dir` as its working directory.
 /// Fire-and-forget, output discarded, like [`open_with_default_app`].
 pub fn open_terminal(dir: &Path) {
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
     let Some(mut args) = shlex::split(&default_terminal()).filter(|args| !args.is_empty()) else {
         eprintln!("no terminal configured");
         return;
     };
     let program = args.remove(0);
-    let spawned = Command::new(&program)
+    let spawned = fs_ops::sandbox::host_command_in(&program, dir)
         .args(args)
-        .current_dir(dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -90,14 +61,11 @@ pub fn open_terminal(dir: &Path) {
 /// choice in COSMIC Settings, else the system default), then `$TERMINAL`,
 /// then the Debian/Ubuntu `x-terminal-emulator`, then `cosmic-term`.
 fn default_terminal() -> String {
-    let config_home = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")));
     let relative = "cosmic/com.system76.CosmicSettings.Shortcuts/v1/system_actions";
-    let candidates = config_home
-        .map(|dir| dir.join(relative))
-        .into_iter()
-        .chain([PathBuf::from("/usr/share").join(relative)]);
+    let candidates = [
+        fs_ops::sandbox::config_home().join(relative),
+        fs_ops::sandbox::host_path(&Path::new("/usr/share").join(relative)),
+    ];
     for file in candidates {
         if let Some(terminal) = std::fs::read_to_string(file)
             .ok()
@@ -109,7 +77,7 @@ fn default_terminal() -> String {
     if let Some(terminal) = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty()) {
         return terminal;
     }
-    if Path::new("/usr/bin/x-terminal-emulator").exists() {
+    if fs_ops::sandbox::host_program_exists("x-terminal-emulator") {
         return "x-terminal-emulator".to_string();
     }
     "cosmic-term".to_string()
@@ -223,7 +191,13 @@ pub fn load_apps(mime: Option<&str>) -> Vec<AppEntry> {
     let default_id = mime.and_then(default_app_id);
     let locales = fde::get_languages_from_env();
 
-    let mut apps: Vec<AppEntry> = cosmic::desktop::load_applications(&locales, false, None)
+    let entries: Vec<DesktopEntryData> = if fs_ops::sandbox::in_flatpak() {
+        host_applications(&locales)
+    } else {
+        cosmic::desktop::load_applications(&locales, false, None).collect()
+    };
+    let mut apps: Vec<AppEntry> = entries
+        .into_iter()
         .filter_map(|app| {
             let exec = app.exec?;
             let recommended =
@@ -252,8 +226,50 @@ pub fn load_apps(mime: Option<&str>) -> Vec<AppEntry> {
     apps
 }
 
+/// The host's applications, read from its `applications` folders (in a
+/// Flatpak, libcosmic only sees the sandbox's). The first `.desktop` file
+/// with an ID wins, as in the desktop entry spec; hidden ones are skipped.
+fn host_applications(locales: &[String]) -> Vec<DesktopEntryData> {
+    let data_dirs = fs_ops::sandbox::host_data_dirs();
+    let dirs = data_dirs.iter().map(|dir| dir.join("applications"));
+    let mut seen = std::collections::HashSet::new();
+    fde::Iter::new(dirs)
+        .filter_map(|path| fde::DesktopEntry::from_path(path, Some(locales)).ok())
+        .filter(|entry| seen.insert(entry.appid.clone()))
+        .filter(|entry| !entry.no_display() && !entry.hidden())
+        .map(|entry| {
+            let mut app = DesktopEntryData::from_desktop_entry(locales, entry);
+            if let fde::IconSource::Name(name) = &app.icon {
+                if let Some(path) = host_icon_file(&data_dirs, name) {
+                    app.icon = fde::IconSource::Path(path);
+                }
+            }
+            app
+        })
+        .collect()
+}
+
+/// An app icon file in the host's `hicolor` theme or pixmaps (e.g. icons of
+/// other Flatpak apps, which the sandbox's icon theme can't see).
+fn host_icon_file(data_dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
+    let sizes = ["scalable", "256x256", "128x128", "96x96", "64x64", "48x48"];
+    data_dirs.iter().find_map(|dir| {
+        sizes
+            .iter()
+            .flat_map(|size| {
+                let apps = dir.join("icons/hicolor").join(size).join("apps");
+                [
+                    apps.join(format!("{name}.svg")),
+                    apps.join(format!("{name}.png")),
+                ]
+            })
+            .chain([dir.join("pixmaps").join(format!("{name}.png"))])
+            .find(|path| path.is_file())
+    })
+}
+
 fn default_app_id(mime: &str) -> Option<String> {
-    let output = std::process::Command::new("xdg-mime")
+    let output = fs_ops::sandbox::host_command("xdg-mime")
         .args(["query", "default", mime])
         .output()
         .ok()?;
@@ -265,6 +281,10 @@ fn default_app_id(mime: &str) -> Option<String> {
 /// Entry spec describes. Apps that take a single file (`%f`/`%u`) get one
 /// instance per path.
 pub async fn launch(app: AppEntry, paths: Vec<PathBuf>) {
+    if fs_ops::sandbox::in_flatpak() {
+        launch_on_host(&app, &paths);
+        return;
+    }
     for command in expand_exec(&app.exec, &paths) {
         cosmic::desktop::spawn_desktop_exec(
             command,
@@ -273,6 +293,34 @@ pub async fn launch(app: AppEntry, paths: Vec<PathBuf>) {
             app.terminal,
         )
         .await;
+    }
+}
+
+/// [`launch`] in a Flatpak: each command runs on the host (terminal apps in
+/// the user's terminal), fire-and-forget like [`open_with_default_app`].
+fn launch_on_host(app: &AppEntry, paths: &[PathBuf]) {
+    use std::process::Stdio;
+    for command in expand_exec(&app.exec, paths) {
+        let command = if app.terminal {
+            format!("{} -e {command}", default_terminal())
+        } else {
+            command
+        };
+        let Some(args) = shlex::split(&command).filter(|args| !args.is_empty()) else {
+            continue;
+        };
+        let spawned = fs_ops::sandbox::host_command(&args[0])
+            .args(&args[1..])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        match spawned {
+            Ok(mut child) => {
+                std::thread::spawn(move || child.wait());
+            }
+            Err(err) => eprintln!("failed to start {}: {err}", app.name),
+        }
     }
 }
 

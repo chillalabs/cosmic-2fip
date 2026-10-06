@@ -1,6 +1,7 @@
 # Flatpak build recipe. Local build (from this checkout):
 #   just flatpak
-# For Flathub, the `dir` source below becomes a `git` source with a release tag.
+# Published to the chillalabs repository with `just flatpak-publish` (not
+# Flathub: see the org.freedesktop.Flatpak permission below).
 id: io.github.chillalabs.TwoFip
 runtime: org.freedesktop.Platform
 runtime-version: '26.08'
@@ -18,6 +19,16 @@ finish-args:
   - --filesystem=host
   # The COSMIC theme and settings libcosmic follows.
   - --talk-name=com.system76.CosmicSettingsDaemon
+  # Run the system's terminal (F9), apps (Open With, F3/F4), xdg-open,
+  # xdg-mime and thumbnailers on the host via `flatpak-spawn --host`. Fine for
+  # our own repository; Flathub would reject it.
+  - --talk-name=org.freedesktop.Flatpak
+  # The host's thumbnailers write to /tmp (Ubuntu's AppArmor profile only lets
+  # evince-thumbnailer write /tmp/.gnome_desktop_thumbnail*).
+  - --filesystem=/tmp
+  # Other Flatpak apps' launchers and icons, for Open With.
+  - --filesystem=xdg-data/flatpak/exports:ro
+  - --filesystem=/var/lib/flatpak/exports:ro
 
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin
