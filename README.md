@@ -54,6 +54,16 @@ desktop, inspired by Total Commander. Written in Rust with
 | Ctrl+, | Settings |
 | Ctrl+Q, Alt+F4 | Quit |
 
+## Install with Flatpak
+
+```sh
+flatpak install --user https://chillalabs.github.io/flatpak/2fip.flatpakref
+```
+
+Updates come with `flatpak update`. More at <https://chillalabs.github.io/flatpak/>.
+In the Flatpak, F9 (terminal) is off and Open With uses the desktop's app
+chooser, since the sandbox can't start other programs directly.
+
 ## Build and install
 
 Requirements: Rust (stable), [just](https://github.com/casey/just), and the
@@ -65,6 +75,7 @@ just test       # run the tests
 just install    # install to ~/.local (binary, launcher entry, icon)
 just uninstall  # remove it again (settings in ~/.config/2fip are kept)
 just package    # dist/2fip-<version>-<arch>.tar.gz for another computer
+just flatpak    # build and install the Flatpak locally
 ```
 
 To install a package on another computer, unpack it and run `./install.sh`.

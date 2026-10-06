@@ -64,3 +64,13 @@ flatpak:
 # flatpak-cargo-generator.py from flatpak/flatpak-builder-tools).
 flatpak-sources generator="flatpak-cargo-generator.py":
     python3 {{generator}} Cargo.lock -o flatpak/cargo-sources.json
+
+# Build and add a signed release to the chillalabs Flatpak repository (a
+# checkout of github.com/chillalabs/flatpak, served by GitHub Pages); then
+# commit and push that checkout. Signed with the key in ~/.gnupg.
+flatpak-publish site="../chillalabs-flatpak" key="D0A09A1D8E8EDB64":
+    flatpak run org.flatpak.Builder --user --force-clean --default-branch=stable \
+        --state-dir=.flatpak-builder flatpak/build flatpak/io.github.chillalabs.TwoFip.yml
+    flatpak build-export --gpg-sign={{key}} {{site}}/repo flatpak/build stable
+    flatpak build-update-repo --gpg-sign={{key}} --generate-static-deltas \
+        --prune --prune-depth=5 --title="chillalabs" {{site}}/repo
