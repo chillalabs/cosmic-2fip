@@ -36,12 +36,26 @@ pub fn open_with_default_app(path: &Path) {
 /// Fire-and-forget, output discarded, like [`open_with_default_app`].
 pub fn open_terminal(dir: &Path) {
     use std::process::Stdio;
-    let Some(mut args) = shlex::split(&default_terminal()).filter(|args| !args.is_empty()) else {
-        eprintln!("no terminal configured");
+    let Some(terminal) = default_terminal() else {
+        eprintln!("no terminal found: install one, or set $TERMINAL");
+        return;
+    };
+    let Some(mut args) = shlex::split(&terminal.command).filter(|args| !args.is_empty()) else {
         return;
     };
     let program = args.remove(0);
-    let spawned = fs_ops::sandbox::host_command_in(&program, dir)
+    // Terminals that ignore the folder they're started in get told.
+    if let Some(option) = working_directory_option(&program) {
+        args.push(format!("{option}{}", dir.display()));
+    }
+    let mut command = if terminal.via_distrobox_host {
+        let mut command = std::process::Command::new("distrobox-host-exec");
+        command.arg(&program).current_dir(dir);
+        command
+    } else {
+        fs_ops::sandbox::host_command_in(&program, dir)
+    };
+    let spawned = command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -57,30 +71,117 @@ pub fn open_terminal(dir: &Path) {
     }
 }
 
-/// The terminal command COSMIC uses for its "Terminal" shortcut (the user's
-/// choice in COSMIC Settings, else the system default), then `$TERMINAL`,
-/// then the Debian/Ubuntu `x-terminal-emulator`, then `cosmic-term`.
-fn default_terminal() -> String {
+/// Terminals tried, in order, when none is configured (COSMIC's, then those
+/// of GNOME, KDE, Xfce and others), with the option that makes each start
+/// in a given folder (`None`: it starts in the folder it's launched from).
+const KNOWN_TERMINALS: &[(&str, Option<&str>)] = &[
+    ("cosmic-term", None),
+    ("ptyxis", Some("--working-directory=")),
+    ("kgx", Some("--working-directory=")),
+    ("gnome-terminal", Some("--working-directory=")),
+    ("konsole", Some("--workdir=")),
+    ("xfce4-terminal", Some("--working-directory=")),
+    ("mate-terminal", Some("--working-directory=")),
+    ("tilix", Some("--working-directory=")),
+    ("terminator", Some("--working-directory=")),
+    ("lxterminal", Some("--working-directory=")),
+    ("alacritty", Some("--working-directory=")),
+    ("kitty", Some("--directory=")),
+    ("foot", Some("--working-directory=")),
+    ("wezterm", None),
+    ("xterm", None),
+];
+
+/// The option that makes `program` start in a given folder, if it needs one.
+fn working_directory_option(program: &str) -> Option<&'static str> {
+    let name = Path::new(program).file_name()?.to_str()?;
+    KNOWN_TERMINALS
+        .iter()
+        .find(|(known, _)| *known == name)
+        .and_then(|(_, option)| *option)
+}
+
+/// The terminal F9 opens: a command line, and whether it has to run on the
+/// Distrobox host (none is installed in the container).
+#[derive(Debug, PartialEq, Eq)]
+struct Terminal {
+    command: String,
+    via_distrobox_host: bool,
+}
+
+/// The terminal to use: COSMIC's "Terminal" shortcut setting, then
+/// `$TERMINAL`, then the system's default (`x-terminal-emulator`,
+/// `xdg-terminal-exec`), then the first known terminal installed. Only ones
+/// actually installed count: Distrobox containers share the home folder, so
+/// COSMIC's setting may name a terminal the container doesn't have. Inside
+/// Distrobox with no terminal at all, the host's is used.
+fn default_terminal() -> Option<Terminal> {
+    let local = |command: String| Terminal {
+        command,
+        via_distrobox_host: false,
+    };
+    if let Some(command) = pick_terminal(
+        cosmic_terminal_setting(),
+        std::env::var("TERMINAL").ok(),
+        fs_ops::sandbox::host_program_exists,
+    ) {
+        return Some(local(command));
+    }
+    if fs_ops::sandbox::host_program_exists("distrobox-host-exec") {
+        // Distrobox mounts the host's root at /run/host.
+        let on_host = |program: &str| {
+            let program = program.trim_start_matches('/');
+            ["usr/bin", "usr/local/bin", "bin"]
+                .iter()
+                .any(|dir| Path::new("/run/host").join(dir).join(program).is_file())
+        };
+        return pick_terminal(cosmic_terminal_setting(), None, on_host).map(|command| Terminal {
+            command,
+            via_distrobox_host: true,
+        });
+    }
+    None
+}
+
+/// The pure part of [`default_terminal`]: the first candidate whose program
+/// `installed` says exists.
+fn pick_terminal(
+    configured: Option<String>,
+    from_env: Option<String>,
+    installed: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let usable = |command: &String| {
+        shlex::split(command)
+            .and_then(|args| args.first().cloned())
+            .is_some_and(|program| installed(&program))
+    };
+    [configured, from_env]
+        .into_iter()
+        .flatten()
+        .find(usable)
+        .or_else(|| {
+            ["x-terminal-emulator", "xdg-terminal-exec"]
+                .into_iter()
+                .chain(KNOWN_TERMINALS.iter().map(|(name, _)| *name))
+                .find(|name| installed(name))
+                .map(str::to_string)
+        })
+}
+
+/// COSMIC's "Terminal" shortcut command (the user's choice in COSMIC
+/// Settings, else the system default).
+fn cosmic_terminal_setting() -> Option<String> {
     let relative = "cosmic/com.system76.CosmicSettings.Shortcuts/v1/system_actions";
-    let candidates = [
+    [
         fs_ops::sandbox::config_home().join(relative),
         fs_ops::sandbox::host_path(&Path::new("/usr/share").join(relative)),
-    ];
-    for file in candidates {
-        if let Some(terminal) = std::fs::read_to_string(file)
+    ]
+    .into_iter()
+    .find_map(|file| {
+        std::fs::read_to_string(file)
             .ok()
             .and_then(|contents| terminal_from_system_actions(&contents))
-        {
-            return terminal;
-        }
-    }
-    if let Some(terminal) = std::env::var("TERMINAL").ok().filter(|t| !t.is_empty()) {
-        return terminal;
-    }
-    if fs_ops::sandbox::host_program_exists("x-terminal-emulator") {
-        return "x-terminal-emulator".to_string();
-    }
-    "cosmic-term".to_string()
+    })
 }
 
 /// Extracts `Terminal: "..."` from COSMIC's `system_actions` (RON) file.
@@ -302,7 +403,10 @@ fn launch_on_host(app: &AppEntry, paths: &[PathBuf]) {
     use std::process::Stdio;
     for command in expand_exec(&app.exec, paths) {
         let command = if app.terminal {
-            format!("{} -e {command}", default_terminal())
+            match default_terminal() {
+                Some(terminal) => format!("{} -e {command}", terminal.command),
+                None => continue,
+            }
         } else {
             command
         };
@@ -427,6 +531,50 @@ mod tests {
             Some("cosmic-term".to_string())
         );
         assert_eq!(terminal_from_system_actions("{ Launcher: \"x\" }"), None);
+    }
+
+    #[test]
+    fn picks_the_first_installed_terminal() {
+        let installed =
+            |names: &'static [&'static str]| move |program: &str| names.contains(&program);
+        // The COSMIC setting wins if that terminal is installed…
+        assert_eq!(
+            pick_terminal(
+                Some("cosmic-term".into()),
+                None,
+                installed(&["cosmic-term", "konsole"])
+            ),
+            Some("cosmic-term".into())
+        );
+        // …but not in a container that shares the home folder without it.
+        assert_eq!(
+            pick_terminal(Some("cosmic-term".into()), None, installed(&["konsole"])),
+            Some("konsole".into())
+        );
+        assert_eq!(
+            pick_terminal(
+                None,
+                Some("kitty -1".into()),
+                installed(&["kitty", "xterm"])
+            ),
+            Some("kitty -1".into())
+        );
+        assert_eq!(
+            pick_terminal(None, None, installed(&["xterm", "x-terminal-emulator"])),
+            Some("x-terminal-emulator".into())
+        );
+        assert_eq!(pick_terminal(None, None, installed(&[])), None);
+    }
+
+    #[test]
+    fn terminals_that_need_it_get_a_working_directory_option() {
+        assert_eq!(
+            working_directory_option("/usr/bin/gnome-terminal"),
+            Some("--working-directory=")
+        );
+        assert_eq!(working_directory_option("konsole"), Some("--workdir="));
+        assert_eq!(working_directory_option("cosmic-term"), None);
+        assert_eq!(working_directory_option("unknown-term"), None);
     }
 
     #[test]

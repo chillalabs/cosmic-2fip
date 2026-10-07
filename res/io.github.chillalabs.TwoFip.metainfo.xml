@@ -64,6 +64,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.1.2" date="2026-10-06">
+      <description>
+        <ul>
+          <li>F9 finds an installed terminal on any distribution (GNOME Console, Ptyxis, Konsole, Xfce and more), starting it in the panel's folder; in Distrobox it falls back to the host's terminal</li>
+          <li>The Refresh and Find tooltips are readable with every theme</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-10-06">
       <description>
         <p>The Flatpak now works like a regular install:</p>

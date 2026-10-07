@@ -133,6 +133,7 @@ pub fn menu_bar<'a>(
             widget::text(tooltip),
             widget::tooltip::Position::Bottom,
         )
+        .class(cosmic::theme::Container::custom(tooltip_style))
     };
 
     vec![
@@ -149,4 +150,24 @@ pub fn menu_bar<'a>(
         .into(),
         tool("system-search-symbolic", fl!("tooltip-find"), Action::Find).into(),
     ]
+}
+
+/// libcosmic's tooltip look, plus a text color: its own style leaves the text
+/// color to the surroundings, and in the header bar that's the title bar's,
+/// which can be as dark as the tooltip (e.g. with the System theme).
+fn tooltip_style(theme: &cosmic::Theme) -> widget::container::Style {
+    let cosmic = theme.cosmic();
+    let text = cosmic.on_bg_color();
+    widget::container::Style {
+        icon_color: Some(text.into()),
+        text_color: Some(text.into()),
+        background: Some(cosmic::iced::Background::Color(
+            cosmic.palette.neutral_2.into(),
+        )),
+        border: cosmic::iced::Border {
+            radius: cosmic.corner_radii.radius_l.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
 }
