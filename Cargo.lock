@@ -1717,7 +1717,7 @@ dependencies = [
 
 [[package]]
 name = "fs-ops"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "md5",
  "mime_guess",
@@ -5192,7 +5192,7 @@ dependencies = [
 
 [[package]]
 name = "twofip"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "chrono",
  "fs-ops",
