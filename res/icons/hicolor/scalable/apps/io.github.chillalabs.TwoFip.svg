@@ -1,48 +1,31 @@
 <svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- 2fip: two file panels, cyan and orange, in a dark tray. -->
+  <!-- 2fip: two file panels, cyan and orange, each with a folder and files. -->
   <defs>
-    <clipPath id="tray">
-      <rect x="10" y="13" width="108" height="100" rx="21"/>
-    </clipPath>
-    <!-- A file with a folded corner. -->
-    <path id="file" d="M0 0h10l4.5 4.5V18H0z"/>
-    <path id="fold" d="M10 0v4.5H14.5z"/>
+    <!-- A folder: the darker back with its tab, then the front. -->
+    <g id="folder">
+      <path d="M0 4.5v-1A3.5 3.5 0 0 1 3.5 0H17c1.6 0 2.6 1 4 2.4L23 4.5z" fill="#E4A83C"/>
+      <rect y="4" width="32" height="27" rx="4" fill="#F7C553"/>
+    </g>
+    <!-- A file with a folded corner and a soft shadow. -->
+    <g id="file">
+      <path d="M3 1h4.5l4.5 4.5V13a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2z" fill="#D0D3DE"/>
+      <path d="M2 0h5l4 4v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2z" fill="#F6F7F9"/>
+      <path d="M7 0v4h4z" fill="#E1E3EC"/>
+    </g>
   </defs>
 
-  <!-- Tray: a dark rim with a raised lip at the bottom. -->
-  <rect x="6" y="11" width="116" height="110" rx="26" fill="#1c1e28"/>
-  <rect x="6" y="9" width="116" height="106" rx="26" fill="#2a2c38"/>
-  <g clip-path="url(#tray)">
-    <rect x="10" y="13" width="108" height="100" fill="#23252f"/>
-    <!-- The tray's lighter floor. -->
-    <rect x="10" y="90" width="108" height="23" fill="#464954"/>
-    <rect x="10" y="90" width="108" height="2" fill="#555864"/>
-  </g>
+  <!-- Left panel (cyan): shadow, rim, inside. -->
+  <rect x="11" y="15" width="48" height="98" rx="14" fill="#007888"/>
+  <rect x="10" y="12" width="48" height="98" rx="14" fill="#4AB8C7"/>
+  <rect x="14" y="16" width="40" height="90" rx="10" fill="#105C68"/>
+  <use href="#folder" x="19" y="22"/>
+  <use href="#file" x="20" y="60"/>
+  <use href="#file" x="35" y="60"/>
 
-  <!-- Left panel (cyan). -->
-  <rect x="16" y="21" width="45" height="81" rx="9" fill="#2c8393"/>
-  <rect x="16" y="18" width="45" height="81" rx="9" fill="#44adc0"/>
-  <rect x="21" y="23" width="35" height="71" rx="4.5" fill="#22242f"/>
-  <!-- Folder. -->
-  <path d="M25 30h9l3 3h13.5a1.5 1.5 0 0 1 1.5 1.5V48H25z" fill="#d3a843"/>
-  <path d="M26.5 36.5H53.5l-2.6 13H25.3z" fill="#f5d27b"/>
-  <!-- Two files. -->
-  <use href="#file" x="26.5" y="54.5" fill="#c9bb95"/>
-  <use href="#file" x="25" y="53" fill="#f3ecd9"/>
-  <use href="#fold" x="25" y="53" fill="#d7c9a6"/>
-  <use href="#file" x="26.5" y="75.5" fill="#c9bb95"/>
-  <use href="#file" x="25" y="74" fill="#f3ecd9"/>
-  <use href="#fold" x="25" y="74" fill="#d7c9a6"/>
-
-  <!-- Right panel (orange). -->
-  <rect x="67" y="21" width="45" height="81" rx="9" fill="#b44a1d"/>
-  <rect x="67" y="18" width="45" height="81" rx="9" fill="#e5622b"/>
-  <rect x="72" y="23" width="35" height="71" rx="4.5" fill="#22242f"/>
-  <!-- Folder. -->
-  <path d="M76 30h9l3 3h13.5a1.5 1.5 0 0 1 1.5 1.5V48H76z" fill="#c29a2e"/>
-  <path d="M77.5 36.5H104.5l-2.6 13H76.3z" fill="#e6bb45"/>
-  <!-- One file. -->
-  <use href="#file" x="77.5" y="54.5" fill="#c9bb95"/>
-  <use href="#file" x="76" y="53" fill="#f3ecd9"/>
-  <use href="#fold" x="76" y="53" fill="#d7c9a6"/>
+  <!-- Right panel (orange): shadow, rim, inside. -->
+  <rect x="71" y="15" width="48" height="98" rx="14" fill="#B23300"/>
+  <rect x="70" y="12" width="48" height="98" rx="14" fill="#EF652A"/>
+  <rect x="74" y="16" width="40" height="90" rx="10" fill="#7B2101"/>
+  <use href="#folder" x="79" y="22"/>
+  <use href="#file" x="80" y="60"/>
 </svg>
