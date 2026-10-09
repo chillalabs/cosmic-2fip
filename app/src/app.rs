@@ -830,7 +830,8 @@ impl App {
                 };
                 self.set_active_pane(id);
                 let dest = self.pane(id).current_dir();
-                self.drop_files(dest, paths, false)
+                // Copy, or move with Shift held, as for drops within 2fip.
+                self.drop_files(dest, paths, crate::windows::shift_held())
             }
             Message::DetailsLoaded(paths, result) => {
                 if let Some(details) = &mut self.details {

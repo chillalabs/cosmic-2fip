@@ -144,19 +144,114 @@ fn keyring_error(err: oo7::Error) -> String {
     format!("system keyring: {err}")
 }
 
-// No system keyring outside Linux yet (Windows: Credential Manager, later),
-// so passwords are only kept for the session.
-#[cfg(not(unix))]
-pub async fn store_password(_id: &str, _label: &str, _password: &str) -> Result<(), String> {
-    Err("no system keyring on this platform yet".to_string())
+/// Windows: the password lives in the Credential Manager (Control Panel →
+/// Credential Manager → Windows Credentials), as a generic credential
+/// named after the connection.
+#[cfg(windows)]
+mod credential_manager {
+    use windows_sys::Win32::Foundation::{GetLastError, ERROR_NOT_FOUND};
+    use windows_sys::Win32::Security::Credentials::{
+        CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE,
+        CRED_TYPE_GENERIC,
+    };
+
+    fn wide(text: &str) -> Vec<u16> {
+        text.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn target(id: &str) -> Vec<u16> {
+        wide(&format!("io.github.chillalabs.TwoFip/{id}"))
+    }
+
+    fn last_error() -> String {
+        // SAFETY: reads the calling thread's last error code.
+        format!("Credential Manager: error {}", unsafe { GetLastError() })
+    }
+
+    pub fn store(id: &str, label: &str, password: &str) -> Result<(), String> {
+        let mut target = target(id);
+        let mut comment = wide(label);
+        let mut blob = password.as_bytes().to_vec();
+        let credential = CREDENTIALW {
+            Type: CRED_TYPE_GENERIC,
+            TargetName: target.as_mut_ptr(),
+            Comment: comment.as_mut_ptr(),
+            CredentialBlobSize: blob.len() as u32,
+            CredentialBlob: blob.as_mut_ptr(),
+            Persist: CRED_PERSIST_LOCAL_MACHINE,
+            ..Default::default()
+        };
+        // SAFETY: every pointer refers to a buffer above that outlives the call.
+        if unsafe { CredWriteW(&credential, 0) } == 0 {
+            return Err(last_error());
+        }
+        Ok(())
+    }
+
+    pub fn load(id: &str) -> Result<Option<String>, String> {
+        let target = target(id);
+        let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
+        // SAFETY: `target` is NUL-terminated; on success Windows allocates
+        // `credential`, freed below with CredFree.
+        unsafe {
+            if CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut credential) == 0 {
+                return match GetLastError() {
+                    ERROR_NOT_FOUND => Ok(None),
+                    _ => Err(last_error()),
+                };
+            }
+            let blob = std::slice::from_raw_parts(
+                (*credential).CredentialBlob,
+                (*credential).CredentialBlobSize as usize,
+            );
+            let password = String::from_utf8_lossy(blob).into_owned();
+            CredFree(credential as *const _);
+            Ok(Some(password))
+        }
+    }
+
+    pub fn delete(id: &str) -> Result<(), String> {
+        let target = target(id);
+        // SAFETY: `target` is NUL-terminated.
+        unsafe {
+            if CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) == 0
+                && GetLastError() != ERROR_NOT_FOUND
+            {
+                return Err(last_error());
+            }
+        }
+        Ok(())
+    }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub async fn store_password(id: &str, label: &str, password: &str) -> Result<(), String> {
+    credential_manager::store(id, label, password)
+}
+
+#[cfg(windows)]
+pub async fn load_password(id: &str) -> Result<Option<String>, String> {
+    credential_manager::load(id)
+}
+
+#[cfg(windows)]
+pub async fn delete_password(id: &str) -> Result<(), String> {
+    credential_manager::delete(id)
+}
+
+// No system keyring on other systems, so passwords are only kept for the
+// session.
+#[cfg(not(any(unix, windows)))]
+pub async fn store_password(_id: &str, _label: &str, _password: &str) -> Result<(), String> {
+    Err("no system keyring on this platform".to_string())
+}
+
+#[cfg(not(any(unix, windows)))]
 pub async fn load_password(_id: &str) -> Result<Option<String>, String> {
     Ok(None)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 pub async fn delete_password(_id: &str) -> Result<(), String> {
     Ok(())
 }

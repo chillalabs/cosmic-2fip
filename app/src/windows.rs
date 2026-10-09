@@ -46,6 +46,14 @@ fn wide(text: &std::ffi::OsStr) -> Vec<u16> {
     text.encode_wide().chain(std::iter::once(0)).collect()
 }
 
+/// Whether Shift is held down right now. Needed for drops from Explorer:
+/// during a drag the window gets no key events.
+pub fn shift_held() -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
+    // SAFETY: a plain key state query. The top bit means "down".
+    unsafe { GetAsyncKeyState(VK_SHIFT as i32) < 0 }
+}
+
 /// Whether the mouse pointer is over the right half of the window under it,
 /// i.e. over the right panel. `None` if Windows can't tell.
 pub fn cursor_over_right_half() -> Option<bool> {
