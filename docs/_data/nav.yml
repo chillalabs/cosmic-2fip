@@ -1,0 +1,21 @@
+# The table of contents in the sidebar, in reading order.
+- title: Introduction
+  url: /
+- title: Installation
+  url: /install.html
+- title: The main window
+  url: /interface.html
+- title: Working with files
+  url: /files.html
+- title: Finding files
+  url: /find.html
+- title: Favorites
+  url: /favorites.html
+- title: Servers and connections
+  url: /connections.html
+- title: Settings
+  url: /settings.html
+- title: Keyboard shortcuts
+  url: /keyboard.html
+- title: Questions and problems
+  url: /faq.html

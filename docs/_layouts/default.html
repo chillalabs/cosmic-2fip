@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="{{ site.lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.title %}{{ page.title }} · {% endif %}{{ site.title }}</title>
+  <meta name="description" content="{{ site.description }}">
+  <link rel="icon" href="{{ '/assets/2fip.svg' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="{{ '/' | relative_url }}">
+      <img src="{{ '/assets/2fip.svg' | relative_url }}" alt="" width="32" height="32">
+      <span>2fip Help</span>
+    </a>
+    <a class="repo" href="https://github.com/chillalabs/cosmic-2fip">GitHub</a>
+  </header>
+  <div class="layout">
+    <nav class="toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        {% for item in site.data.nav %}
+        <li><a href="{{ item.url | relative_url }}"{% if page.url == item.url %} aria-current="page"{% endif %}>{{ item.title }}</a></li>
+        {% endfor %}
+      </ol>
+    </nav>
+    <main>
+      <h1>{{ page.title }}</h1>
+      {{ content }}
+      <footer>
+        2fip is free software (GPL-3.0) ·
+        <a href="https://github.com/chillalabs/cosmic-2fip/issues">Report a problem</a> ·
+        <a href="https://github.com/chillalabs/cosmic-2fip/edit/main/docs/{{ page.path }}">Edit this page</a>
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
