@@ -454,6 +454,10 @@ impl App {
                 self.right.clear_drop_hover();
                 self.drop_files(dest, paths, is_move)
             }
+            Message::Pane(id, PaneMessage::ShowShellMenu) => {
+                self.set_active_pane(id);
+                self.show_shell_menu(id)
+            }
             Message::Pane(id, msg) => {
                 // A listing finishing its load isn't the user picking that
                 // pane (after an operation both panes reload in the background),
@@ -2275,6 +2279,22 @@ impl App {
     /// Files dropped into `dest` (drag and drop, from 2fip or another app):
     /// copied, or moved if the drag asked for it or Shift is held. Files
     /// already in `dest`, and folders dropped into themselves, are skipped.
+    /// Windows: Explorer's right-click menu for the pane's selection; runs
+    /// the 2fip action it picks (or refreshes after a Windows command).
+    #[cfg(windows)]
+    fn show_shell_menu(&mut self, id: PaneId) -> Task<Message> {
+        let paths = self.pane(id).selected_paths();
+        match crate::shell_menu::show(&paths) {
+            Some(action) => self.handle_action(action),
+            None => Task::none(),
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn show_shell_menu(&mut self, _id: PaneId) -> Task<Message> {
+        Task::none()
+    }
+
     fn drop_files(&mut self, dest: PathBuf, paths: Vec<PathBuf>, is_move: bool) -> Task<Message> {
         if self.operation.is_some() {
             return Task::none();

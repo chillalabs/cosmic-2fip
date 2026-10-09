@@ -90,6 +90,9 @@ pub enum PaneMessage {
         paths: Vec<PathBuf>,
         is_move: bool,
     },
+    /// Windows: right button released over a file, show Explorer's menu
+    /// for the selection. Handled by the app.
+    ShowShellMenu,
     /// A content preview finished loading (`None`: none could be made).
     ThumbnailReady(ThumbnailKey, Option<PathBuf>),
     SelectAll,
@@ -347,7 +350,9 @@ impl PaneState {
                 }
                 Task::none()
             }
-            PaneMessage::Action(_) | PaneMessage::DropFiles { .. } => Task::none(),
+            PaneMessage::Action(_) | PaneMessage::DropFiles { .. } | PaneMessage::ShowShellMenu => {
+                Task::none()
+            }
             PaneMessage::DropHover(dest) => {
                 self.drop_hover = Some(dest);
                 Task::none()
@@ -1331,7 +1336,7 @@ fn list_view<'a>(
             .on_press(PaneMessage::EntrySelected(entity, select_mode))
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
-        let entry = widget::context_menu(area, item_menu(keybinds, item, can_paste));
+        let entry = with_item_menu(area, item, keybinds, can_paste);
         rows = rows.push(draggable_entry(entry, pane, tab_state, item, DragLook::Row));
     }
     rows.into()
@@ -1396,7 +1401,7 @@ fn grid_view<'a>(
             .on_press(PaneMessage::EntrySelected(entity, select_mode))
             .on_double_click(PaneMessage::EntryDoubleClicked(entity))
             .on_right_press(PaneMessage::EntryRightClicked(entity));
-        let entry = widget::context_menu(area, item_menu(keybinds, item, can_paste));
+        let entry = with_item_menu(area, item, keybinds, can_paste);
         cells.push(draggable_entry(
             entry,
             pane,
@@ -1689,6 +1694,21 @@ pub fn resolve_typed_path(input: &str, current: &Path, home: &Path) -> PathBuf {
         }
     }
     resolved
+}
+
+/// Adds the right-click menu to a file's row or cell: 2fip's own, or on
+/// Windows Explorer's (shown by the app when the button is released; files
+/// on servers keep 2fip's).
+fn with_item_menu<'a>(
+    area: cosmic::iced::widget::MouseArea<'a, PaneMessage, cosmic::Theme, cosmic::Renderer>,
+    item: &FileItem,
+    keybinds: &HashMap<KeyBind, Action>,
+    can_paste: bool,
+) -> Element<'a, PaneMessage> {
+    if cfg!(windows) && !fs_ops::vfs::is_remote(&item.path) {
+        return area.on_right_release(PaneMessage::ShowShellMenu).into();
+    }
+    widget::context_menu(area, item_menu(keybinds, item, can_paste)).into()
 }
 
 /// Windows: a menu of the drives (`C:`, `D:`, ...) showing the current

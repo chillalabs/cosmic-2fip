@@ -13,6 +13,8 @@ mod localize;
 mod menu_bar;
 mod operation;
 mod pane;
+#[cfg(windows)]
+mod shell_menu;
 mod tab;
 mod themes;
 #[cfg(windows)]
