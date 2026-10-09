@@ -105,6 +105,12 @@ font-size-default = Predeterminado ({ $px } px)
 font-size-small = Pequeño ({ $px } px)
 font-size-smaller = Más pequeño ({ $px } px)
 font-size-tiny = Diminuto ({ $px } px)
+settings-corners = Esquinas redondeadas
+settings-corners-description = Cuán redondeados son la ventana, los botones y los paneles
+corners-square = Rectas
+corners-small = Poco redondeadas
+corners-medium = Redondeadas
+corners-large = Muy redondeadas (COSMIC)
 
 ## Favoritos
 favorites-saved = Carpetas guardadas

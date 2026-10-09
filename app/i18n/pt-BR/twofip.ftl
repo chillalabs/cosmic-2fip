@@ -105,6 +105,12 @@ font-size-default = Padrão ({ $px } px)
 font-size-small = Pequeno ({ $px } px)
 font-size-smaller = Menor ({ $px } px)
 font-size-tiny = Minúsculo ({ $px } px)
+settings-corners = Cantos arredondados
+settings-corners-description = Quão arredondados são a janela, os botões e os painéis
+corners-square = Retos
+corners-small = Pouco arredondados
+corners-medium = Arredondados
+corners-large = Muito arredondados (COSMIC)
 
 ## Favoritos
 favorites-saved = Pastas salvas

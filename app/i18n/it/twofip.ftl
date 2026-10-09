@@ -103,6 +103,12 @@ font-size-default = Predefinita ({ $px } px)
 font-size-small = Piccola ({ $px } px)
 font-size-smaller = Più piccola ({ $px } px)
 font-size-tiny = Minuscola ({ $px } px)
+settings-corners = Angoli arrotondati
+settings-corners-description = Quanto sono arrotondati la finestra, i pulsanti e i pannelli
+corners-square = Squadrati
+corners-small = Leggermente arrotondati
+corners-medium = Arrotondati
+corners-large = Molto arrotondati (COSMIC)
 
 ## Preferiti
 favorites-saved = Cartelle salvate

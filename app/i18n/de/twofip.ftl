@@ -103,6 +103,12 @@ font-size-default = Standard ({ $px } px)
 font-size-small = Klein ({ $px } px)
 font-size-smaller = Kleiner ({ $px } px)
 font-size-tiny = Winzig ({ $px } px)
+settings-corners = Abgerundete Ecken
+settings-corners-description = Wie rund Fenster, Schaltflächen und Bereiche sind
+corners-square = Eckig
+corners-small = Leicht abgerundet
+corners-medium = Abgerundet
+corners-large = Stark abgerundet (COSMIC)
 
 ## Favoriten
 favorites-saved = Gespeicherte Ordner

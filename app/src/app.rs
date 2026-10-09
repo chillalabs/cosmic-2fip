@@ -18,7 +18,7 @@ use fs_ops::favorites::Favorite;
 use fs_ops::ops::{CancelHandle, ConflictHandle, ConflictResolution, OpEvent};
 use fs_ops::search::SearchEvent;
 use fs_ops::session::Session;
-use fs_ops::settings::{ColorTheme, FontSize, IconStyle, Settings, ViewMode};
+use fs_ops::settings::{ColorTheme, Corners, FontSize, IconStyle, Settings, ViewMode};
 use fs_ops::user_dirs::UserDir;
 use fs_ops::EntryKind;
 
@@ -108,6 +108,8 @@ pub enum Message {
     FontSizeSelected(usize),
     /// Index into [`COLOR_THEMES`].
     ColorThemeSelected(usize),
+    /// Index into [`CORNERS`].
+    CornersSelected(usize),
     /// A click on a Settings row: give it the keyboard focus.
     FocusSettingsRow(SettingsRow),
     /// A click on a favorite: highlight it for the keyboard.
@@ -163,6 +165,23 @@ pub enum Message {
 /// Index of "Skip" in `App::conflict_buttons`: the safe default focus.
 const CONFLICT_SKIP: usize = 2;
 
+/// Corner roundness steps offered in Settings, in dropdown order.
+const CORNERS: [Corners; 4] = [
+    Corners::Square,
+    Corners::Small,
+    Corners::Medium,
+    Corners::Large,
+];
+
+fn corners_name(corners: Corners) -> String {
+    match corners {
+        Corners::Square => fl!("corners-square"),
+        Corners::Small => fl!("corners-small"),
+        Corners::Medium => fl!("corners-medium"),
+        Corners::Large => fl!("corners-large"),
+    }
+}
+
 /// File name sizes offered in Settings, in dropdown order.
 const FONT_SIZES: [FontSize; 4] = [
     FontSize::Default,
@@ -198,16 +217,18 @@ pub enum SettingsRow {
     Thumbnails,
     Language,
     ColorTheme,
+    Corners,
     IconStyle,
     FontSize,
 }
 
-const SETTINGS_ROWS: [SettingsRow; 7] = [
+const SETTINGS_ROWS: [SettingsRow; 8] = [
     SettingsRow::ShowHidden,
     SettingsRow::SeparateExtension,
     SettingsRow::Thumbnails,
     SettingsRow::Language,
     SettingsRow::ColorTheme,
+    SettingsRow::Corners,
     SettingsRow::IconStyle,
     SettingsRow::FontSize,
 ];
@@ -866,6 +887,15 @@ impl App {
                 }
                 Task::none()
             }
+            Message::CornersSelected(index) => {
+                self.focus_settings_row(SettingsRow::Corners);
+                if let Some(corners) = CORNERS.get(index) {
+                    self.settings.corners = *corners;
+                    self.persist_settings();
+                    return self.apply_color_theme();
+                }
+                Task::none()
+            }
             Message::FontSizeSelected(index) => {
                 self.focus_settings_row(SettingsRow::FontSize);
                 if let Some(size) = FONT_SIZES.get(index) {
@@ -1474,8 +1504,9 @@ impl App {
         self.apply_settings()
     }
 
-    /// Switches 2fip's colors to the chosen theme; "System" goes back to the
-    /// desktop's current theme (libcosmic keeps it up to date meanwhile).
+    /// Switches 2fip's colors to the chosen theme, with the chosen corners;
+    /// "System" goes back to the desktop's current theme (libcosmic keeps it
+    /// up to date meanwhile).
     fn apply_color_theme(&self) -> Task<Message> {
         let theme = match self.settings.color_theme {
             ColorTheme::System => self.core.system_theme().clone(),
@@ -1483,7 +1514,8 @@ impl App {
             ColorTheme::Dark => cosmic::Theme::dark(),
             own => themes::build(own).unwrap_or_else(cosmic::Theme::dark),
         };
-        cosmic::command::set_theme(theme)
+        let system = self.settings.color_theme == ColorTheme::System;
+        cosmic::command::set_theme(themes::with_corners(&theme, self.settings.corners, system))
     }
 
     fn persist_settings(&self) {
@@ -1582,6 +1614,13 @@ impl App {
                     .position(|theme| *theme == self.settings.color_theme)
                     .unwrap_or(0);
                 Message::ColorThemeSelected(step_index(current, step, COLOR_THEMES.len()))
+            }
+            SettingsRow::Corners => {
+                let current = CORNERS
+                    .iter()
+                    .position(|corners| *corners == self.settings.corners)
+                    .unwrap_or(0);
+                Message::CornersSelected(step_index(current, step, CORNERS.len()))
             }
             SettingsRow::IconStyle => {
                 let current = ICON_STYLES
@@ -2048,6 +2087,10 @@ impl App {
         let selected_color_theme = COLOR_THEMES
             .iter()
             .position(|theme| *theme == self.settings.color_theme);
+        let corners_names: Vec<String> = CORNERS.into_iter().map(corners_name).collect();
+        let selected_corners = CORNERS
+            .iter()
+            .position(|corners| *corners == self.settings.corners);
         let selected_font_size = FONT_SIZES
             .iter()
             .position(|size| *size == self.settings.name_font_size);
@@ -2094,6 +2137,18 @@ impl App {
                             color_theme_names,
                             selected_color_theme,
                             Message::ColorThemeSelected,
+                        )),
+                ),
+            )
+            .add(
+                self.settings_row(
+                    SettingsRow::Corners,
+                    widget::settings::item::builder(fl!("settings-corners"))
+                        .description(fl!("settings-corners-description"))
+                        .control(widget::dropdown(
+                            corners_names,
+                            selected_corners,
+                            Message::CornersSelected,
                         )),
                 ),
             )
@@ -2479,11 +2534,15 @@ impl Application for App {
             saved_session: session,
             modifiers: Modifiers::empty(),
         };
-        // A theme of 2fip's own replaces the desktop's from the first frame on
-        // ("System" is libcosmic's default, nothing to do).
-        let theme_task = match app.settings.color_theme {
-            ColorTheme::System => Task::none(),
-            _ => app.apply_color_theme(),
+        // A theme of 2fip's own (or other corners) replaces the desktop's
+        // from the first frame on ("System" with COSMIC's standard corners is
+        // libcosmic's default, nothing to do).
+        let theme_task = if app.settings.color_theme == ColorTheme::System
+            && app.settings.corners == Corners::default()
+        {
+            Task::none()
+        } else {
+            app.apply_color_theme()
         };
         (app, Task::batch(vec![left_task, right_task, theme_task]))
     }
@@ -2534,6 +2593,22 @@ impl Application for App {
             .title(fl!("about-2fip")),
         };
         Some(drawer)
+    }
+
+    /// The desktop's theme changed: libcosmic applies it as is, so give it
+    /// 2fip's corners again.
+    fn system_theme_update(
+        &mut self,
+        _keys: &[&'static str],
+        new_theme: &cosmic::cosmic_theme::Theme,
+    ) -> Task<Message> {
+        if self.settings.color_theme != ColorTheme::System
+            || self.settings.corners == Corners::default()
+        {
+            return Task::none();
+        }
+        let theme = cosmic::Theme::system(Arc::new(new_theme.clone()));
+        cosmic::command::set_theme(themes::with_corners(&theme, self.settings.corners, true))
     }
 
     fn on_escape(&mut self) -> Task<Message> {

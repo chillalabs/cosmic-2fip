@@ -23,6 +23,21 @@ pub struct Settings {
     pub separate_extension: bool,
     /// 2fip's colors: the desktop's theme, or one of 2fip's own.
     pub color_theme: ColorTheme,
+    /// How rounded the window, buttons and panels are.
+    pub corners: Corners,
+}
+
+/// Roundness of the window, buttons, menus and panels, from square corners
+/// to COSMIC's standard round look.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Corners {
+    Square,
+    Small,
+    Medium,
+    /// COSMIC's standard roundness.
+    #[default]
+    Large,
 }
 
 /// 2fip's color theme (only this app; the desktop keeps its own). Saved as
@@ -120,6 +135,7 @@ impl Default for Settings {
             name_font_size: FontSize::default(),
             separate_extension: true,
             color_theme: ColorTheme::default(),
+            corners: Corners::default(),
         }
     }
 }
@@ -228,6 +244,7 @@ mod tests {
             name_font_size: FontSize::Smaller,
             separate_extension: false,
             color_theme: ColorTheme::Dracula,
+            corners: Corners::Small,
         };
 
         save_to(&path, &settings).unwrap();

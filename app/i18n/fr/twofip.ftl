@@ -103,6 +103,12 @@ font-size-default = Par défaut ({ $px } px)
 font-size-small = Petit ({ $px } px)
 font-size-smaller = Plus petit ({ $px } px)
 font-size-tiny = Minuscule ({ $px } px)
+settings-corners = Coins arrondis
+settings-corners-description = L’arrondi de la fenêtre, des boutons et des panneaux
+corners-square = Carrés
+corners-small = Légèrement arrondis
+corners-medium = Arrondis
+corners-large = Très arrondis (COSMIC)
 
 ## Favoris
 favorites-saved = Dossiers enregistrés

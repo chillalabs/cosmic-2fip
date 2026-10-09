@@ -103,6 +103,12 @@ font-size-default = Default ({ $px } px)
 font-size-small = Small ({ $px } px)
 font-size-smaller = Smaller ({ $px } px)
 font-size-tiny = Tiny ({ $px } px)
+settings-corners = Rounded corners
+settings-corners-description = How round the window, buttons and panels are
+corners-square = Square
+corners-small = Slightly rounded
+corners-medium = Rounded
+corners-large = Very rounded (COSMIC)
 
 ## Favorites
 favorites-saved = Saved folders

@@ -5,8 +5,8 @@
 use std::sync::Arc;
 
 use cosmic::cosmic_theme::palette::{Srgb, Srgba};
-use cosmic::cosmic_theme::ThemeBuilder;
-use fs_ops::settings::ColorTheme;
+use cosmic::cosmic_theme::{CornerRadii, Roundness, ThemeBuilder};
+use fs_ops::settings::{ColorTheme, Corners};
 
 /// The colors a theme is built from, as `0xrrggbb`.
 struct Palette {
@@ -195,6 +195,37 @@ pub fn build(theme: ColorTheme) -> Option<cosmic::Theme> {
         .destructive(hex(p.destructive));
     builder.secondary_container_bg = Some(hex_alpha(p.raised));
     Some(cosmic::Theme::custom(Arc::new(builder.build())))
+}
+
+/// The corner sizes for a roundness step. Square, Medium and Large are
+/// COSMIC's own Square, Slightly round and Round styles.
+fn corner_radii(corners: Corners) -> CornerRadii {
+    match corners {
+        Corners::Square => Roundness::Square.into(),
+        Corners::Small => CornerRadii {
+            radius_0: [0.0; 4],
+            radius_xs: [2.0; 4],
+            radius_s: [4.0; 4],
+            radius_m: [4.0; 4],
+            radius_l: [4.0; 4],
+            radius_xl: [4.0; 4],
+        },
+        Corners::Medium => Roundness::SlightlyRound.into(),
+        Corners::Large => Roundness::Round.into(),
+    }
+}
+
+/// `theme` with the corners of `corners`. A system theme stays one, so
+/// libcosmic keeps following the desktop's changes (which 2fip then rounds
+/// again, see `system_theme_update`).
+pub fn with_corners(theme: &cosmic::Theme, corners: Corners, system: bool) -> cosmic::Theme {
+    let mut cosmic = theme.cosmic().clone();
+    cosmic.corner_radii = corner_radii(corners);
+    if system {
+        cosmic::Theme::system(Arc::new(cosmic))
+    } else {
+        cosmic::Theme::custom(Arc::new(cosmic))
+    }
 }
 
 /// `0xrrggbb` → color.
