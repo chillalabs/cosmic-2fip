@@ -1,0 +1,27 @@
+# Checks whether 2fip compiles for Windows. This is a first step towards a
+# Windows version: it only runs `cargo check` (no build, no tests) and lists
+# every error, so we can see what is Linux-only.
+name: Windows check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the core crate (fs-ops)
+        run: cargo check -p fs-ops --all-targets --keep-going
+
+      - name: Check the app (twofip)
+        if: ${{ !cancelled() }}
+        run: cargo check -p twofip --all-targets --keep-going
