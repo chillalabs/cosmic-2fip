@@ -155,6 +155,15 @@ fn icon_handle(
             ),
         };
     }
+    // Windows has no icon theme: Explorer's own icons (in grey for
+    // Monochrome).
+    #[cfg(windows)]
+    {
+        let grey = options.icon_style == IconStyle::Monochrome;
+        if let Some(handle) = crate::windows::shell_icon(path, kind == EntryKind::Dir, grey) {
+            return handle;
+        }
+    }
     let suffix = match options.icon_style {
         IconStyle::Monochrome => "-symbolic",
         _ => "",
