@@ -55,4 +55,4 @@ older systems, use the Flatpak.
 
 ### I found a bug or have an idea
 
-Please tell us on [GitHub](https://github.com/chillalabs/cosmic-2fip/issues).
+Please tell us on [GitHub](https://github.com/chillalabs/twofip/issues).

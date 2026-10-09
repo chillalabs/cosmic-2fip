@@ -1,8 +1,8 @@
 # The 2fip user's guide, built by GitHub Pages (Jekyll) from this folder:
-# https://chillalabs.github.io/cosmic-2fip/
+# https://chillalabs.github.io/twofip/
 title: 2fip Help
 description: User's guide for 2fip, a keyboard-driven dual-panel file manager for COSMIC.
-baseurl: /cosmic-2fip
+baseurl: /twofip
 lang: en
 markdown: kramdown
 kramdown:

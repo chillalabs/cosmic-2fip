@@ -32,9 +32,9 @@
     <name>chillalabs</name>
   </developer>
 
-  <url type="homepage">https://github.com/chillalabs/cosmic-2fip</url>
-  <url type="bugtracker">https://github.com/chillalabs/cosmic-2fip/issues</url>
-  <url type="vcs-browser">https://github.com/chillalabs/cosmic-2fip</url>
+  <url type="homepage">https://github.com/chillalabs/twofip</url>
+  <url type="bugtracker">https://github.com/chillalabs/twofip/issues</url>
+  <url type="vcs-browser">https://github.com/chillalabs/twofip</url>
 
   <categories>
     <category>System</category>

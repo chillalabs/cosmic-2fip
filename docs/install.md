@@ -27,7 +27,7 @@ To update: `flatpak update`. To remove: `flatpak uninstall io.github.chillalabs.
 ## AppImage
 
 Download `2fip-<version>-x86_64.AppImage` from the
-[latest release](https://github.com/chillalabs/cosmic-2fip/releases/latest),
+[latest release](https://github.com/chillalabs/twofip/releases/latest),
 make it executable and run it:
 
 ```sh
@@ -57,8 +57,8 @@ You need Rust (stable), [just](https://github.com/casey/just) and the usual
 COSMIC build packages (for example `libxkbcommon-dev`):
 
 ```sh
-git clone https://github.com/chillalabs/cosmic-2fip
-cd cosmic-2fip
+git clone https://github.com/chillalabs/twofip
+cd twofip
 just run        # build and start
 just install    # install into ~/.local
 ```

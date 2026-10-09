@@ -37,5 +37,5 @@ Press <kbd>F1</kbd> in 2fip at any time to open this guide.
 
 This guide describes 2fip as it is published at
 [chillalabs.github.io/flatpak](https://chillalabs.github.io/flatpak/) and on
-the [releases page](https://github.com/chillalabs/cosmic-2fip/releases). It is
+the [releases page](https://github.com/chillalabs/twofip/releases). It is
 written in English for now; other languages will follow.
