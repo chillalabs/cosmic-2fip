@@ -76,8 +76,35 @@ pub async fn local_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     local
 }
 
+/// Windows: Windows Terminal, else PowerShell (7, then the built-in one),
+/// else the Command Prompt, in a console of its own, starting in `dir`.
+#[cfg(windows)]
+pub fn open_terminal(dir: &Path) {
+    use std::os::windows::process::CommandExt;
+    use std::process::Command;
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+
+    let mut windows_terminal = Command::new("wt.exe");
+    windows_terminal.arg("-d").arg(dir);
+    let candidates = [
+        windows_terminal,
+        Command::new("pwsh.exe"),
+        Command::new("powershell.exe"),
+        Command::new("cmd.exe"),
+    ];
+    for mut command in candidates {
+        command.current_dir(dir).creation_flags(CREATE_NEW_CONSOLE);
+        if let Ok(mut child) = command.spawn() {
+            std::thread::spawn(move || child.wait());
+            return;
+        }
+    }
+    eprintln!("no terminal found");
+}
+
 /// Opens the user's default terminal with `dir` as its working directory.
 /// Fire-and-forget, output discarded, like [`open_with_default_app`].
+#[cfg(not(windows))]
 pub fn open_terminal(dir: &Path) {
     use std::process::Stdio;
     let Some(terminal) = default_terminal() else {

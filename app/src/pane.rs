@@ -1691,9 +1691,7 @@ pub fn resolve_typed_path(input: &str, current: &Path, home: &Path) -> PathBuf {
 }
 
 pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+    fs_ops::sandbox::home_dir()
 }
 
 /// "Up one level" arrow (left, then up). The icon theme has no such icon, so it ships

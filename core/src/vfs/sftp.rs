@@ -334,8 +334,8 @@ async fn authenticate(handle: &mut Handle<Client>, user: &str, password: Option<
         }
     }
 
-    if let Some(home) = std::env::var_os("HOME") {
-        let ssh = Path::new(&home).join(".ssh");
+    {
+        let ssh = crate::sandbox::home_dir().join(".ssh");
         for name in ["id_ed25519", "id_ecdsa", "id_rsa"] {
             // Keys with a passphrase are skipped: the agent covers those.
             let Ok(key) = keys::load_secret_key(ssh.join(name), None) else {

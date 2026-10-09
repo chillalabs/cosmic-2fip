@@ -15,28 +15,53 @@ pub fn in_flatpak() -> bool {
     *IN_FLATPAK.get_or_init(|| Path::new("/.flatpak-info").exists())
 }
 
+/// The user's home folder: `$HOME`, or `%USERPROFILE%` on Windows.
+pub fn home_dir() -> PathBuf {
+    #[cfg(windows)]
+    let (variable, fallback) = ("USERPROFILE", "C:\\");
+    #[cfg(not(windows))]
+    let (variable, fallback) = ("HOME", "/");
+    non_empty_var(variable).unwrap_or_else(|| PathBuf::from(fallback))
+}
+
+fn non_empty_var(variable: &str) -> Option<PathBuf> {
+    std::env::var_os(variable)
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+}
+
 /// The folder for app settings: `$XDG_CONFIG_HOME` or `~/.config` (always
-/// `~/.config` in a Flatpak).
+/// `~/.config` in a Flatpak); `%APPDATA%` on Windows.
+#[cfg(not(windows))]
 pub fn config_home() -> PathBuf {
     xdg_home("XDG_CONFIG_HOME", ".config")
 }
 
 /// The folder for caches: `$XDG_CACHE_HOME` or `~/.cache` (always `~/.cache`
-/// in a Flatpak).
+/// in a Flatpak); `%LOCALAPPDATA%` on Windows.
+#[cfg(not(windows))]
 pub fn cache_home() -> PathBuf {
     xdg_home("XDG_CACHE_HOME", ".cache")
 }
 
+#[cfg(not(windows))]
 fn xdg_home(variable: &str, default: &str) -> PathBuf {
     if !in_flatpak() {
-        if let Some(dir) = std::env::var_os(variable).filter(|dir| !dir.is_empty()) {
-            return PathBuf::from(dir);
+        if let Some(dir) = non_empty_var(variable) {
+            return dir;
         }
     }
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
-        .join(default)
+    home_dir().join(default)
+}
+
+#[cfg(windows)]
+pub fn config_home() -> PathBuf {
+    non_empty_var("APPDATA").unwrap_or_else(|| home_dir().join("AppData\\Roaming"))
+}
+
+#[cfg(windows)]
+pub fn cache_home() -> PathBuf {
+    non_empty_var("LOCALAPPDATA").unwrap_or_else(|| home_dir().join("AppData\\Local"))
 }
 
 /// A command that runs `program` on the host system: through
@@ -104,9 +129,7 @@ pub fn host_program_exists(program: &str) -> bool {
 /// most important first: where `.desktop` files, thumbnailers and app icons
 /// live. Outside a Flatpak, `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`.
 pub fn host_data_dirs() -> Vec<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_default();
+    let home = home_dir();
     if in_flatpak() {
         return vec![
             home.join(".local/share"),

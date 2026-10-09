@@ -19,6 +19,7 @@ pub enum UserDir {
 
 /// Maps each well-known folder's path to what it is. Missing or unreadable
 /// config just yields fewer entries (always at least the home folder).
+#[cfg(not(windows))]
 pub fn load() -> HashMap<PathBuf, UserDir> {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return HashMap::new();
@@ -31,7 +32,27 @@ pub fn load() -> HashMap<PathBuf, UserDir> {
     parse(&contents, &home)
 }
 
+/// Windows: the standard folders in the user's profile (folders moved
+/// elsewhere, e.g. to OneDrive, just show a plain folder icon).
+#[cfg(windows)]
+pub fn load() -> HashMap<PathBuf, UserDir> {
+    let home = crate::sandbox::home_dir();
+    let mut dirs = HashMap::from([(home.clone(), UserDir::Home)]);
+    for (name, kind) in [
+        ("Desktop", UserDir::Desktop),
+        ("Documents", UserDir::Documents),
+        ("Downloads", UserDir::Download),
+        ("Music", UserDir::Music),
+        ("Pictures", UserDir::Pictures),
+        ("Videos", UserDir::Videos),
+    ] {
+        dirs.insert(home.join(name), kind);
+    }
+    dirs
+}
+
 /// Parses `user-dirs.dirs` lines like `XDG_DOCUMENTS_DIR="$HOME/Documents"`.
+#[cfg_attr(windows, allow(dead_code))]
 fn parse(contents: &str, home: &Path) -> HashMap<PathBuf, UserDir> {
     let mut dirs = HashMap::from([(home.to_path_buf(), UserDir::Home)]);
     for line in contents.lines() {
