@@ -24,5 +24,10 @@ list's choice, and <kbd>Esc</kbd> closes the panel.
 | Setting | What it does |
 |---|---|
 | **Color theme** | **System** follows COSMIC's appearance; or choose Light, Dark, Dracula, Everforest, Gruvbox Material, Nord, Tokyo Night Storm, Catppuccin Mocha, Catppuccin Macchiato, Ayu Dark, Matrix, Monokai Pro, Solarized Dark or Gruvbox Dark. It affects 2fip only. |
-| **Icon style** | **Colorful:** your icon theme's icons, like COSMIC Files. **Vivid:** 2fip's own bright icons, a color and symbol for each file type and a color for each special folder. **Classic:** 2fip's own icons in a Windows-like look, yellow folders with a colored badge on special folders and white pages with colored symbols. **Soft:** 2fip's own icons in a macOS-like look, light-blue folders with an embossed symbol and white pages with a colored band. **Monochrome:** single-color symbols. Vivid, Classic and Soft look the same on every system, with no icon theme needed. |
+| **Icon style** | **Colorful:** your icon theme's icons, like COSMIC Files. **Vivid:** 2fip's own bright icons, a color and symbol for each file type and a color for each special folder. **Windows style:** yellow folders with a colored badge on special folders, and white pages with colored symbols. **macOS style:** light-blue folders with an embossed symbol, and white pages with a colored band. **Monochrome:** single-color symbols. Vivid, Windows style and macOS style are drawn by 2fip and look the same on every system, with no icon theme needed. |
 | **File name size** | Default (14 px), Small (13 px), Smaller (12 px) or Tiny (11 px): smaller text shows more files. |
+
+> The **Windows style** and **macOS style** icons are original drawings made for
+> 2fip in a look similar to those systems. 2fip is not affiliated with or
+> endorsed by Microsoft or Apple. Windows is a trademark of Microsoft
+> Corporation; macOS is a trademark of Apple Inc.
