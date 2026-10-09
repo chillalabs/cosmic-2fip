@@ -14,6 +14,12 @@ use cosmic::widget::icon;
 /// Fire-and-forget: we don't wait for the launched app to exit. The app's
 /// own console output is discarded so it doesn't flood our terminal (the
 /// "Open With" path does the same, via libcosmic).
+#[cfg(windows)]
+pub fn open_with_default_app(path: &Path) {
+    crate::windows::open(path);
+}
+
+#[cfg(not(windows))]
 pub fn open_with_default_app(path: &Path) {
     use std::process::Stdio;
     // On the host in a Flatpak, so the system's default apps are used.

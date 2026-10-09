@@ -91,6 +91,10 @@ pub enum Message {
     LaunchApp(usize),
     CancelOpenWith,
     Launched,
+    /// Files dropped from another app through the window system (Explorer
+    /// on Windows; on Linux, libcosmic's drag and drop handles drops).
+    #[cfg(windows)]
+    ExternalDrop(Vec<PathBuf>),
     DetailsLoaded(Vec<PathBuf>, Result<Details, String>),
     CloseDetails,
     ShowHiddenFilesToggled(bool),
@@ -796,6 +800,17 @@ impl App {
                 Task::none()
             }
             Message::Launched => Task::none(),
+            #[cfg(windows)]
+            Message::ExternalDrop(paths) => {
+                let id = match crate::windows::cursor_over_right_half() {
+                    Some(true) => PaneId::Right,
+                    Some(false) => PaneId::Left,
+                    None => self.active_pane,
+                };
+                self.set_active_pane(id);
+                let dest = self.pane(id).current_dir();
+                self.drop_files(dest, paths, false)
+            }
             Message::DetailsLoaded(paths, result) => {
                 if let Some(details) = &mut self.details {
                     if details.paths == paths {
@@ -2931,6 +2946,10 @@ fn key_subscription() -> Subscription<Message> {
         }) => Some(Message::EscapeCaptured),
         Event::Keyboard(KeyEvent::ModifiersChanged(modifiers)) => {
             Some(Message::ModifiersChanged(modifiers))
+        }
+        #[cfg(windows)]
+        Event::Window(cosmic::iced::window::Event::FileDropped(paths)) => {
+            Some(Message::ExternalDrop(paths))
         }
         _ => None,
     })

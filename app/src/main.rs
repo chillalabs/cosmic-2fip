@@ -15,6 +15,8 @@ mod operation;
 mod pane;
 mod tab;
 mod themes;
+#[cfg(windows)]
+mod windows;
 
 fn main() -> cosmic::iced::Result {
     cosmic::app::run::<app::App>(cosmic::app::Settings::default(), ())

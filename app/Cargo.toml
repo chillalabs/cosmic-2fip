@@ -31,3 +31,5 @@ libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["wgpu", "
 # default features add Wayland, D-Bus and accessibility, which don't.
 [target.'cfg(windows)'.dependencies]
 libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = ["wgpu", "tokio", "winit", "multi-window"] }
+# Opening files with their default app, and drops from Explorer.
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
