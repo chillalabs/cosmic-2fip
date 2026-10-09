@@ -1,7 +1,7 @@
 # Checks whether 2fip compiles for Windows. This is a first step towards a
 # Windows version: it only runs `cargo check` (no build, no tests) and lists
 # every error, so we can see what is Linux-only.
-name: Windows check
+name: Windows
 
 on:
   push:
@@ -25,3 +25,24 @@ jobs:
       - name: Check the app (twofip)
         if: ${{ !cancelled() }}
         run: cargo check -p twofip --all-targets --keep-going
+
+  # A test build of 2fip.exe, downloadable from the run's "Artifacts" section
+  # (kept for 14 days). Not a release: it opens a console window too, which
+  # shows log messages while we test.
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build 2fip.exe
+        run: cargo build --release -p twofip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 2fip-windows-x86_64
+          path: target/release/2fip.exe
+          retention-days: 14
