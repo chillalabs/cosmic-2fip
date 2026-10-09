@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::settings::ViewMode;
+use crate::settings::{ColumnWidths, ViewMode};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -27,6 +27,9 @@ pub struct PaneSession {
     /// Each tab's list/grid mode, parallel to `tabs` (missing entries, e.g.
     /// from an older session file, mean list view).
     pub tab_view_modes: Vec<ViewMode>,
+    /// Each tab's list column widths, parallel to `tabs` (missing entries
+    /// mean the default widths).
+    pub tab_column_widths: Vec<ColumnWidths>,
 }
 
 impl PaneSession {
@@ -104,11 +107,20 @@ mod tests {
                 tabs: vec![PathBuf::from("/a"), PathBuf::from("/b")],
                 active_tab: 1,
                 tab_view_modes: vec![ViewMode::Grid, ViewMode::List],
+                tab_column_widths: vec![
+                    crate::settings::ColumnWidths {
+                        ext: 50,
+                        size: 90,
+                        modified: 150,
+                    },
+                    Default::default(),
+                ],
             },
             right: PaneSession {
                 tabs: vec![PathBuf::from("/c")],
                 active_tab: 0,
                 tab_view_modes: vec![ViewMode::List],
+                tab_column_widths: Vec::new(),
             },
             right_active: true,
         };
@@ -135,6 +147,7 @@ mod tests {
             tabs: vec![dir.path().join("gone").join("deeper")],
             active_tab: 7,
             tab_view_modes: vec![ViewMode::Grid],
+            tab_column_widths: Vec::new(),
         };
 
         let (tabs, active) = pane.restore(&fallback);

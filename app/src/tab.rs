@@ -39,6 +39,8 @@ pub struct TabState {
     /// Folder sizes worked out on request (Space), shown in the Size column.
     /// Kept across reloads of the same folder; cleared when navigating away.
     pub dir_sizes: HashMap<PathBuf, DirSize>,
+    /// List view column widths (dragged by the user), per tab.
+    pub column_widths: fs_ops::settings::ColumnWidths,
 }
 
 /// A folder's total size (everything inside, recursively), as calculated on
@@ -80,6 +82,7 @@ impl TabState {
             anchor: None,
             cursor: None,
             dir_sizes: HashMap::new(),
+            column_widths: Default::default(),
         }
     }
 

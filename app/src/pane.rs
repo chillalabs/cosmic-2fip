@@ -16,7 +16,7 @@ use crate::fl;
 use crate::keybinds::Action;
 use crate::tab::{tab_label, DirSize, PendingSelect, TabState};
 use cosmic::iced::clipboard::dnd::DndAction;
-use fs_ops::settings::{FontSize, ViewMode};
+use fs_ops::settings::{ColumnWidths, FontSize, ViewMode};
 
 pub type TabId = segmented_button::Entity;
 
@@ -93,6 +93,12 @@ pub enum PaneMessage {
     /// Windows: right button released over a file, show Explorer's menu
     /// for the selection. Handled by the app.
     ShowShellMenu,
+    /// The left button went down on the divider after the list column at
+    /// this index: start resizing.
+    ColumnResizeStart(usize),
+    /// While resizing: the mouse is at this window x position.
+    ColumnResizeMoved(f32),
+    ColumnResizeEnded,
     /// A content preview finished loading (`None`: none could be made).
     ThumbnailReady(ThumbnailKey, Option<PathBuf>),
     SelectAll,
@@ -128,6 +134,15 @@ pub enum PaneMessage {
     SelectTab(TabId),
 }
 
+/// A column divider drag in progress.
+struct ColumnResize {
+    /// Index of the column left of the divider.
+    divider: usize,
+    /// The mouse's x when the drag got going (from its first move).
+    start_x: Option<f32>,
+    start: ColumnWidths,
+}
+
 pub struct PaneState {
     id: PaneId,
     tabs: segmented_button::SingleSelectModel,
@@ -150,6 +165,8 @@ pub struct PaneState {
     thumbnails_requested: HashSet<ThumbnailKey>,
     /// Where a drag currently hovering this pane would drop its files (a
     /// folder, or the tab's own folder); that place is highlighted.
+    /// The list column divider being dragged, if any.
+    column_resize: Option<ColumnResize>,
     drop_hover: Option<PathBuf>,
 }
 
@@ -159,6 +176,7 @@ impl PaneState {
     pub fn new(
         id: PaneId,
         tab_list: Vec<(PathBuf, ViewMode)>,
+        column_widths: &[ColumnWidths],
         active_tab: usize,
         options: ListingOptions,
     ) -> (Self, Task<Message>) {
@@ -167,6 +185,7 @@ impl PaneState {
         for (index, (dir, view_mode)) in tab_list.into_iter().enumerate() {
             let mut tab_state = TabState::new(dir.clone());
             tab_state.view_mode = view_mode;
+            tab_state.column_widths = column_widths.get(index).copied().unwrap_or_default();
             let tab_id = tabs
                 .insert()
                 .text(tab_label(&dir))
@@ -191,6 +210,7 @@ impl PaneState {
             thumbnails: HashMap::new(),
             thumbnails_requested: HashSet::new(),
             drop_hover: None,
+            column_resize: None,
         };
         (pane, Task::batch(tasks))
     }
@@ -201,6 +221,7 @@ impl PaneState {
         let mut active_tab = 0;
         let mut tabs = Vec::new();
         let mut tab_view_modes = Vec::new();
+        let mut tab_column_widths = Vec::new();
         for (index, tab) in self.tabs.iter().enumerate() {
             if tab == active {
                 active_tab = index;
@@ -215,12 +236,14 @@ impl PaneState {
                 };
                 tabs.push(dir);
                 tab_view_modes.push(tab_state.view_mode);
+                tab_column_widths.push(tab_state.column_widths);
             }
         }
         fs_ops::session::PaneSession {
             tabs,
             active_tab,
             tab_view_modes,
+            tab_column_widths,
         }
     }
 
@@ -351,6 +374,31 @@ impl PaneState {
                 Task::none()
             }
             PaneMessage::Action(_) | PaneMessage::DropFiles { .. } | PaneMessage::ShowShellMenu => {
+                Task::none()
+            }
+            PaneMessage::ColumnResizeStart(divider) => {
+                if let Some(tab_state) = self.tabs.active_data::<TabState>() {
+                    self.column_resize = Some(ColumnResize {
+                        divider,
+                        start_x: None,
+                        start: tab_state.column_widths,
+                    });
+                }
+                Task::none()
+            }
+            PaneMessage::ColumnResizeMoved(x) => {
+                let columns = list_columns(self.options.separate_extension);
+                if let Some(resize) = &mut self.column_resize {
+                    let start_x = *resize.start_x.get_or_insert(x);
+                    let widths = resized(resize.start, columns, resize.divider, x - start_x);
+                    if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
+                        tab_state.column_widths = widths;
+                    }
+                }
+                Task::none()
+            }
+            PaneMessage::ColumnResizeEnded => {
+                self.column_resize = None;
                 Task::none()
             }
             PaneMessage::DropHover(dest) => {
@@ -564,11 +612,20 @@ impl PaneState {
         }
     }
 
-    /// Opens a new active tab on `dir` with `view_mode`.
+    /// Whether a list column is being resized (by dragging its divider).
+    pub fn is_resizing_columns(&self) -> bool {
+        self.column_resize.is_some()
+    }
+
+    /// Opens a new active tab on `dir` with `view_mode` (and the current
+    /// tab's column widths).
     fn open_tab(&mut self, dir: PathBuf, view_mode: ViewMode) -> Task<Message> {
         self.cancel_path_edit();
         let mut tab_state = TabState::new(dir.clone());
         tab_state.view_mode = view_mode;
+        if let Some(current) = self.tabs.active_data::<TabState>() {
+            tab_state.column_widths = current.column_widths;
+        }
         self.tabs
             .insert()
             .text(tab_label(&dir))
@@ -1243,10 +1300,14 @@ fn list_header(tab_state: &TabState, separate_extension: bool) -> Element<'_, Pa
     // Same horizontal layout as the rows below, so each label sits exactly
     // over its column: the rows are inset by the scroll area's padding plus
     // their own, and use the same gap between columns.
+    let columns = list_columns(separate_extension);
     let mut header = widget::Row::new()
-        .spacing(LIST_COLUMN_GAP)
+        .align_y(cosmic::iced::Alignment::Center)
         .padding([0, LIST_SCROLL_PADDING + LIST_ROW_PADDING_X]);
-    for &column in list_columns(separate_extension) {
+    for (index, &column) in columns.iter().enumerate() {
+        if index > 0 {
+            header = header.push(column_divider(index - 1));
+        }
         let mut label = widget::Row::new()
             .spacing(4)
             .align_y(cosmic::iced::Alignment::Center)
@@ -1270,11 +1331,75 @@ fn list_header(tab_state: &TabState, separate_extension: bool) -> Element<'_, Pa
             .on_press(PaneMessage::SortBy(column));
         header = header.push(
             widget::container(button)
-                .width(table::ItemCategory::width(&column))
+                .width(column_width(&tab_state.column_widths, column))
                 .clip(true),
         );
     }
     header.into()
+}
+
+/// The handle between two column headers (in the gap between the columns):
+/// drag it to resize them.
+fn column_divider(index: usize) -> Element<'static, PaneMessage> {
+    let line = widget::container(widget::divider::vertical::default())
+        .width(LIST_COLUMN_GAP)
+        .height(18)
+        .center_x(LIST_COLUMN_GAP);
+    widget::mouse_area(line)
+        .interaction(cosmic::iced::mouse::Interaction::ResizingHorizontally)
+        .on_press(PaneMessage::ColumnResizeStart(index))
+        .into()
+}
+
+/// A list column's width in this tab; Name takes the space left.
+fn column_width(widths: &ColumnWidths, column: Column) -> Length {
+    match column {
+        Column::Name => Length::Fill,
+        Column::Ext => Length::Fixed(f32::from(widths.ext)),
+        Column::Size => Length::Fixed(f32::from(widths.size)),
+        Column::Modified => Length::Fixed(f32::from(widths.modified)),
+    }
+}
+
+/// Narrowest and widest a resized column can get, in pixels.
+const MIN_COLUMN_WIDTH: f32 = 40.0;
+const MAX_COLUMN_WIDTH: f32 = 800.0;
+
+/// The widths after dragging the divider after `columns[divider]` by `dx`
+/// pixels from where it was at `start`: the columns on both sides of it
+/// trade width (Name, which fills the rest, simply grows or shrinks).
+fn resized(start: ColumnWidths, columns: &[Column], divider: usize, dx: f32) -> ColumnWidths {
+    fn slot(widths: &mut ColumnWidths, column: Column) -> Option<&mut u16> {
+        match column {
+            Column::Name => None,
+            Column::Ext => Some(&mut widths.ext),
+            Column::Size => Some(&mut widths.size),
+            Column::Modified => Some(&mut widths.modified),
+        }
+    }
+    let (Some(&left), Some(&right)) = (columns.get(divider), columns.get(divider + 1)) else {
+        return start;
+    };
+    let mut widths = start;
+    let right_start = slot(&mut widths, right).map_or(0.0, |width| f32::from(*width));
+    let dx = match slot(&mut widths, left).map(|width| f32::from(*width)) {
+        // Name on the left: only the right column changes.
+        None => dx.clamp(
+            right_start - MAX_COLUMN_WIDTH,
+            right_start - MIN_COLUMN_WIDTH,
+        ),
+        Some(left_start) => dx.clamp(
+            MIN_COLUMN_WIDTH - left_start,
+            (right_start - MIN_COLUMN_WIDTH).min(MAX_COLUMN_WIDTH - left_start),
+        ),
+    };
+    if let Some(width) = slot(&mut widths, left) {
+        *width = (f32::from(*width) + dx).round() as u16;
+    }
+    if let Some(width) = slot(&mut widths, right) {
+        *width = (f32::from(*width) - dx).round() as u16;
+    }
+    widths
 }
 
 /// List view: one row per entry with fixed columns; every cell stays on one
@@ -1321,7 +1446,7 @@ fn list_view<'a>(
             };
             row = row.push(
                 widget::container(cell)
-                    .width(table::ItemCategory::width(&column))
+                    .width(column_width(&tab_state.column_widths, column))
                     .clip(true),
             );
         }
@@ -1768,6 +1893,25 @@ fn load_dir(pane: PaneId, tab: TabId, path: PathBuf) -> Task<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dragging_a_divider_trades_width_between_its_columns() {
+        let columns = [Column::Name, Column::Ext, Column::Size, Column::Modified];
+        let start = ColumnWidths {
+            ext: 70,
+            size: 120,
+            modified: 180,
+        };
+        // Name | Ext, 30 px right: Name grows, Ext shrinks.
+        let widths = resized(start, &columns, 0, 30.0);
+        assert_eq!((widths.ext, widths.size, widths.modified), (40, 120, 180));
+        // Ext | Size, 20 px right: Ext grows, Size shrinks.
+        let widths = resized(start, &columns, 1, 20.0);
+        assert_eq!((widths.ext, widths.size, widths.modified), (90, 100, 180));
+        // Never narrower than the minimum.
+        let widths = resized(start, &columns, 2, 500.0);
+        assert_eq!((widths.size, widths.modified), (260, 40));
+    }
 
     #[test]
     fn long_tab_titles_are_shortened() {

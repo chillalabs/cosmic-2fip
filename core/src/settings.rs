@@ -94,6 +94,25 @@ impl FontSize {
     }
 }
 
+/// Widths of the list view's columns in pixels; Name takes the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ColumnWidths {
+    pub ext: u16,
+    pub size: u16,
+    pub modified: u16,
+}
+
+impl Default for ColumnWidths {
+    fn default() -> Self {
+        Self {
+            ext: 70,
+            size: 120,
+            modified: 180,
+        }
+    }
+}
+
 /// How a pane lays out its files (saved per pane in the session).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

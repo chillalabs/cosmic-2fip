@@ -91,6 +91,8 @@ pub enum Message {
     LaunchApp(usize),
     CancelOpenWith,
     Launched,
+    /// A column resize event for whichever pane is resizing.
+    ColumnResize(PaneMessage),
     /// Files dropped from another app through the window system (Explorer
     /// on Windows; on Linux, libcosmic's drag and drop handles drops).
     #[cfg(windows)]
@@ -825,6 +827,11 @@ impl App {
                 Task::none()
             }
             Message::Launched => Task::none(),
+            Message::ColumnResize(message) => {
+                let left = self.left.update(message.clone());
+                let right = self.right.update(message);
+                Task::batch([left, right])
+            }
             #[cfg(windows)]
             Message::ExternalDrop(paths) => {
                 let id = match crate::windows::cursor_over_right_half() {
@@ -1205,6 +1212,10 @@ impl App {
     /// Saves the session if it changed since the last save. Called after
     /// every message, so it survives the app being killed, not just a clean quit.
     fn save_session_if_changed(&mut self) {
+        // Not on every mouse move of a column resize: once it ends.
+        if self.left.is_resizing_columns() || self.right.is_resizing_columns() {
+            return;
+        }
         let session = self.session();
         if session == self.saved_session {
             return;
@@ -2504,9 +2515,20 @@ impl Application for App {
         let session = fs_ops::session::load();
         let (left_dirs, left_active) = session.left.restore(&home);
         let (right_dirs, right_active) = session.right.restore(&home);
-        let (left, left_task) =
-            PaneState::new(PaneId::Left, left_dirs, left_active, options.clone());
-        let (right, right_task) = PaneState::new(PaneId::Right, right_dirs, right_active, options);
+        let (left, left_task) = PaneState::new(
+            PaneId::Left,
+            left_dirs,
+            &session.left.tab_column_widths,
+            left_active,
+            options.clone(),
+        );
+        let (right, right_task) = PaneState::new(
+            PaneId::Right,
+            right_dirs,
+            &session.right.tab_column_widths,
+            right_active,
+            options,
+        );
         let app = App {
             core,
             left,
@@ -2680,7 +2702,11 @@ impl Application for App {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
-        key_subscription()
+        if self.left.is_resizing_columns() || self.right.is_resizing_columns() {
+            Subscription::batch([key_subscription(), column_resize_subscription()])
+        } else {
+            key_subscription()
+        }
     }
 
     fn dialog(&self) -> Option<Element<'_, Message>> {
@@ -3025,6 +3051,21 @@ fn function_key_bar() -> Element<'static, Message> {
         .push(key_button("Alt+F4", fl!("fkey-exit"), Action::Quit))
         .width(Length::Fill)
         .into()
+}
+
+/// While a list column is being resized: where the mouse goes, and when the
+/// button is let go (anywhere in the window).
+fn column_resize_subscription() -> Subscription<Message> {
+    use cosmic::iced::mouse;
+    listen_raw(|event, _status, _window| match event {
+        Event::Mouse(mouse::Event::CursorMoved { position }) => Some(Message::ColumnResize(
+            PaneMessage::ColumnResizeMoved(position.x),
+        )),
+        Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+            Some(Message::ColumnResize(PaneMessage::ColumnResizeEnded))
+        }
+        _ => None,
+    })
 }
 
 fn key_subscription() -> Subscription<Message> {
