@@ -5,7 +5,7 @@ title: Introduction
 
 **2fip** (*2 File Panel*) is a keyboard-driven, dual-panel file manager for the
 [COSMIC](https://system76.com/cosmic) desktop, inspired by Total Commander and
-Double Commander. It shows two folders side by side, so copying and moving
+COSMIC Files. It shows two folders side by side, so copying and moving
 files between them is one key away.
 
 ![The two panels of 2fip](assets/2fip.svg){: width="96" }
