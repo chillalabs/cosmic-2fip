@@ -12,7 +12,6 @@ path = "src/main.rs"
 
 [dependencies]
 fs-ops = { path = "../core" }
-libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["wgpu", "tokio", "single-instance", "desktop"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 tokio-stream = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -22,3 +21,13 @@ i18n-embed-fl = "0.10"
 # Embed the translations in debug builds too (by default rust-embed reads
 # them from the build-time folder path, which breaks if the project moves).
 rust-embed = { version = "8", features = ["debug-embed"] }
+
+# On Linux: Wayland, D-Bus (single instance, COSMIC settings) and the desktop
+# integration (.desktop files, COSMIC theme).
+[target.'cfg(unix)'.dependencies]
+libcosmic = { git = "https://github.com/pop-os/libcosmic", features = ["wgpu", "tokio", "single-instance", "desktop"] }
+
+# On Windows (in progress): only the parts of libcosmic that build there. The
+# default features add Wayland, D-Bus and accessibility, which don't.
+[target.'cfg(windows)'.dependencies]
+libcosmic = { git = "https://github.com/pop-os/libcosmic", default-features = false, features = ["wgpu", "tokio", "winit", "multi-window"] }

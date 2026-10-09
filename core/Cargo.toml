@@ -26,9 +26,11 @@ russh-sftp = "3"
 suppaftp = { version = "12", features = ["tokio-rustls-ring"] }
 webpki-roots = "1"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
-# Saved connection passwords go to the system keyring (Secret Service:
-# GNOME Keyring, KWallet), or the Secret portal inside the Flatpak.
-oo7 = "0.6"
 
 [dev-dependencies]
 tempfile = "3"
+
+# Saved connection passwords go to the system keyring (Secret Service:
+# GNOME Keyring, KWallet), or the Secret portal inside the Flatpak.
+[target.'cfg(unix)'.dependencies]
+oo7 = "0.6"
