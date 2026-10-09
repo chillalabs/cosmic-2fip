@@ -150,7 +150,6 @@ fn server_uri_to_path(uri: &str) -> Option<PathBuf> {
 
 /// `file:///a%20b` (or `file://localhost/...`) → `/a b`.
 fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
-    use std::os::unix::ffi::OsStringExt;
     let rest = uri.strip_prefix("file://")?;
     let path = rest.strip_prefix("localhost").unwrap_or(rest);
     if !path.starts_with('/') {
@@ -170,7 +169,23 @@ fn file_uri_to_path(uri: &str) -> Option<PathBuf> {
             i += 1;
         }
     }
-    Some(PathBuf::from(std::ffi::OsString::from_vec(decoded)))
+    bytes_to_path(decoded)
+}
+
+#[cfg(unix)]
+fn bytes_to_path(bytes: Vec<u8>) -> Option<PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    Some(PathBuf::from(std::ffi::OsString::from_vec(bytes)))
+}
+
+/// `/C:/Users/...` → `C:/Users/...` (Windows paths are UTF-16, so the URI's
+/// bytes must be UTF-8).
+#[cfg(not(unix))]
+fn bytes_to_path(bytes: Vec<u8>) -> Option<PathBuf> {
+    let path = String::from_utf8(bytes).ok()?;
+    let has_drive = path.as_bytes().get(2) == Some(&b':');
+    let path = if has_drive { &path[1..] } else { &path[..] };
+    Some(PathBuf::from(path))
 }
 
 #[cfg(test)]

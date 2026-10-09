@@ -3,6 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
 use cosmic::desktop::{fde, DesktopEntryData, IconSourceExt};
 use cosmic::widget::icon;
 
@@ -326,6 +327,7 @@ pub struct AppEntry {
 /// Lists launchable applications, recommended ones (those declaring `mime`)
 /// first with the default app at the very top, the rest alphabetically.
 /// Blocking: reads every `.desktop` file on the system.
+#[cfg(unix)]
 pub fn load_apps(mime: Option<&str>) -> Vec<AppEntry> {
     let default_id = mime.and_then(default_app_id);
     let locales = fde::get_languages_from_env();
@@ -368,6 +370,7 @@ pub fn load_apps(mime: Option<&str>) -> Vec<AppEntry> {
 /// The host's applications, read from its `applications` folders (in a
 /// Flatpak, libcosmic only sees the sandbox's). The first `.desktop` file
 /// with an ID wins, as in the desktop entry spec; hidden ones are skipped.
+#[cfg(unix)]
 fn host_applications(locales: &[String]) -> Vec<DesktopEntryData> {
     let data_dirs = fs_ops::sandbox::host_data_dirs();
     let dirs = data_dirs.iter().map(|dir| dir.join("applications"));
@@ -419,6 +422,7 @@ fn default_app_id(mime: &str) -> Option<String> {
 /// Launches `app` on `paths`, expanding the `Exec` field codes as the Desktop
 /// Entry spec describes. Apps that take a single file (`%f`/`%u`) get one
 /// instance per path.
+#[cfg(unix)]
 pub async fn launch(app: AppEntry, paths: Vec<PathBuf>) {
     let paths = local_paths(paths).await;
     if fs_ops::sandbox::in_flatpak() {
@@ -515,10 +519,40 @@ fn expand_exec(exec: &str, paths: &[PathBuf]) -> Vec<String> {
     }
 }
 
+// Windows (in progress): no desktop entries, so the "Open With" list is
+// empty and launching falls back to the default app.
+#[cfg(not(unix))]
+pub fn load_apps(_mime: Option<&str>) -> Vec<AppEntry> {
+    Vec::new()
+}
+
+#[cfg(not(unix))]
+pub async fn launch(_app: AppEntry, paths: Vec<PathBuf>) {
+    for path in local_paths(paths).await {
+        open_with_default_app(&path);
+    }
+}
+
 fn file_uri(path: &Path) -> String {
-    use std::os::unix::ffi::OsStrExt;
+    #[cfg(unix)]
+    let bytes = {
+        use std::os::unix::ffi::OsStrExt;
+        path.as_os_str().as_bytes().to_vec()
+    };
+    // Windows paths: forward slashes, and a leading slash before the drive
+    // (file:///C:/Users/...).
+    #[cfg(not(unix))]
+    let bytes = {
+        let path = path.to_string_lossy().replace('\\', "/");
+        let path = if path.starts_with('/') {
+            path
+        } else {
+            format!("/{path}")
+        };
+        path.into_bytes()
+    };
     let mut uri = String::from("file://");
-    for &byte in path.as_os_str().as_bytes() {
+    for &byte in &bytes {
         if byte.is_ascii_alphanumeric() || b"/-_.~".contains(&byte) {
             uri.push(byte as char);
         } else {
