@@ -27,12 +27,13 @@ impl MenuAction for TopMenuAction {
     }
 }
 
-/// The header's left side: the File / Edit / View menus, a separator, and
+/// The header's left side: the File / Edit / View / Help menus, a separator, and
 /// the Refresh and Find buttons.
 pub fn menu_bar<'a>(
     keybinds: &HashMap<KeyBind, Action>,
     can_paste: bool,
     view_mode: ViewMode,
+    on_server: bool,
 ) -> Vec<Element<'a, Message>> {
     // Same shortcuts, re-keyed to the wrapper so the menu can show them.
     let keybinds: HashMap<KeyBind, TopMenuAction> = keybinds
@@ -52,6 +53,30 @@ pub fn menu_bar<'a>(
     let file = vec![
         button(fl!("new-tab"), "tab-new-symbolic", Action::NewTab),
         button(fl!("new-folder"), "folder-new-symbolic", Action::NewFolder),
+        MenuItem::Divider,
+        button(
+            fl!("connect-to-server"),
+            "network-server-symbolic",
+            Action::ConnectToServer,
+        ),
+        button(
+            fl!("connections"),
+            "network-workgroup-symbolic",
+            Action::Connections,
+        ),
+        if on_server {
+            button(
+                fl!("disconnect"),
+                "network-offline-symbolic",
+                Action::Disconnect,
+            )
+        } else {
+            MenuItem::ButtonDisabled(
+                fl!("disconnect"),
+                Some(icon::from_name("network-offline-symbolic").handle()),
+                TopMenuAction(Action::Disconnect),
+            )
+        },
         MenuItem::Divider,
         button(fl!("close-tab"), "window-close-symbolic", Action::CloseTab),
         button(fl!("quit"), "application-exit-symbolic", Action::Quit),
@@ -79,6 +104,11 @@ pub fn menu_bar<'a>(
         MenuItem::Divider,
         button(fl!("rename-ellipsis"), "edit-symbolic", Action::Rename),
         button(fl!("delete"), "user-trash-symbolic", Action::Delete),
+        button(
+            fl!("delete-permanently"),
+            "edit-delete-symbolic",
+            Action::DeletePermanently,
+        ),
     ];
 
     let check = |label: String, icon_name: &'static str, checked: bool, action: Action| {
@@ -110,6 +140,10 @@ pub fn menu_bar<'a>(
             "preferences-system-symbolic",
             Action::Settings,
         ),
+    ];
+
+    let help = vec![
+        button(fl!("help"), "help-browser-symbolic", Action::Help),
         MenuItem::Divider,
         button(fl!("about-2fip"), "help-about-symbolic", Action::About),
     ];
@@ -118,6 +152,7 @@ pub fn menu_bar<'a>(
         menu::Tree::with_children(root(fl!("menu-file")), menu::items(&keybinds, file)),
         menu::Tree::with_children(root(fl!("menu-edit")), menu::items(&keybinds, edit)),
         menu::Tree::with_children(root(fl!("menu-view")), menu::items(&keybinds, view)),
+        menu::Tree::with_children(root(fl!("menu-help")), menu::items(&keybinds, help)),
     ])
     .item_height(ItemHeight::Dynamic(40))
     .item_width(ItemWidth::Uniform(260))
@@ -149,6 +184,12 @@ pub fn menu_bar<'a>(
         )
         .into(),
         tool("system-search-symbolic", fl!("tooltip-find"), Action::Find).into(),
+        tool(
+            "network-server-symbolic",
+            fl!("tooltip-connections"),
+            Action::Connections,
+        )
+        .into(),
     ]
 }
 

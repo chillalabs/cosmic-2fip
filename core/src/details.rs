@@ -37,6 +37,9 @@ pub struct Details {
 /// Gathers details for `paths`. Walks directories recursively to total their
 /// size, so this can take a while on big trees.
 pub async fn details(paths: Vec<PathBuf>) -> Result<Details, String> {
+    if paths.iter().any(|path| crate::vfs::is_remote(path)) {
+        return Err("details aren't available for files on a server yet".to_string());
+    }
     tokio::task::spawn_blocking(move || gather(&paths))
         .await
         .map_err(|err| format!("details task failed: {err}"))?

@@ -138,9 +138,26 @@ fn icon_handle(
     mime: Option<&str>,
     options: &ListingOptions,
 ) -> icon::Handle {
+    // 2fip's own icon sets (symbolic links keep the theme's link emblem).
+    let own_set = match options.icon_style {
+        IconStyle::Vivid => Some(crate::icon_sets::IconSet::Vivid),
+        IconStyle::Classic => Some(crate::icon_sets::IconSet::Classic),
+        IconStyle::Soft => Some(crate::icon_sets::IconSet::Soft),
+        IconStyle::Colorful | IconStyle::Monochrome => None,
+    };
+    if let Some(set) = own_set.filter(|_| kind != EntryKind::Symlink) {
+        return match kind {
+            EntryKind::Dir => crate::icon_sets::folder(set, options.user_dirs.get(path).copied()),
+            _ => crate::icon_sets::file(
+                set,
+                mime,
+                &path.file_name().unwrap_or_default().to_string_lossy(),
+            ),
+        };
+    }
     let suffix = match options.icon_style {
-        IconStyle::Colorful => "",
         IconStyle::Monochrome => "-symbolic",
+        _ => "",
     };
     if let (EntryKind::File, Some(mime)) = (kind, mime) {
         // Icon themes name type icons after the MIME type, '/' -> '-'.
@@ -189,8 +206,8 @@ fn icon_name(kind: EntryKind, path: &Path, options: &ListingOptions) -> &'static
         ),
     };
     match options.icon_style {
-        IconStyle::Colorful => colorful,
         IconStyle::Monochrome => monochrome,
+        _ => colorful,
     }
 }
 

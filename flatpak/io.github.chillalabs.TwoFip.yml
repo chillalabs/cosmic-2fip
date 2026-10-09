@@ -12,6 +12,10 @@ command: 2fip
 
 finish-args:
   - --share=ipc
+  # Server connections (File → Connect to server: SFTP, FTP, FTPS).
+  - --share=network
+  # SFTP logs in with the user's SSH agent keys.
+  - --socket=ssh-auth
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri

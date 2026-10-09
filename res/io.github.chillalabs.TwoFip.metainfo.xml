@@ -19,6 +19,7 @@
       <li>List view with Name, Ext, Size and Modified columns, or a grid view</li>
       <li>Thumbnails, quick filter, favorites, folder sizes and Find Files</li>
       <li>Drag and drop between the panels and other apps</li>
+      <li>SFTP, FTP and FTPS servers, with saved connections</li>
       <li>Color themes, and translations into several languages</li>
     </ul>
   </description>
@@ -64,6 +65,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.2.0" date="2026-10-09">
+      <description>
+        <p>Servers, saved connections and new icon styles:</p>
+        <ul>
+          <li>Browse SFTP, FTP and FTPS folders in a panel, and copy, move, rename and delete there with progress (Ctrl+K)</li>
+          <li>Connections panel: saved connections with their status, open, reconnect, disconnect; passwords stored in the system keyring</li>
+          <li>Delete permanently, without the trash (Shift+Delete)</li>
+          <li>Drag a tab to the other panel to open a copy; double-click beside the tabs for a new one</li>
+          <li>Help menu with an online user's guide (F1)</li>
+          <li>New icon styles: Vivid, Windows style and macOS style</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.5" date="2026-10-08">
       <description>
         <p>New app icon: two file panels, teal and slate blue, each with a folder and files.</p>

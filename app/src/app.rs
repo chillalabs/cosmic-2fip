@@ -22,11 +22,12 @@ use fs_ops::settings::{ColorTheme, FontSize, IconStyle, Settings, ViewMode};
 use fs_ops::user_dirs::UserDir;
 use fs_ops::EntryKind;
 
+use crate::connect::{ConnectState, ConnectStatus};
 use crate::file_item::{format_modified, format_size, ListingOptions};
 use crate::find::{FindState, FindStatus};
 use crate::fl;
 use crate::keybinds::{default_keybinds, Action};
-use crate::launch::{self, open_with_default_app, AppEntry, OpenMode};
+use crate::launch::{self, AppEntry, OpenMode};
 use crate::localize;
 use crate::menu_bar::menu_bar;
 use crate::operation::{OpKind, OperationState};
@@ -108,6 +109,41 @@ pub enum Message {
     /// A click on a favorite: highlight it for the keyboard.
     FocusFavorite(usize),
     CloseDrawer,
+    ConnectProtocol(usize),
+    ConnectHost(String),
+    ConnectPort(String),
+    ConnectUser(String),
+    ConnectPassword(String),
+    ConnectTogglePassword,
+    ConnectSubmit,
+    /// Trust the unknown server key shown, and connect.
+    ConnectTrust,
+    ConnectCancel,
+    ConnectFinished(Result<PathBuf, fs_ops::vfs::ConnectError>),
+    ConnectName(String),
+    ConnectSave(bool),
+    ConnectRemember(bool),
+    /// Save the connection without connecting.
+    ConnectSaveOnly,
+    ConnectSavedOnly(Result<(), String>),
+    ConnectionAdd,
+    /// Open a saved connection (connecting first if needed).
+    ConnectionOpen(String),
+    /// Show an open, unsaved connection (by root).
+    ConnectionOpenRoot(PathBuf),
+    /// Close and open a saved connection again.
+    ConnectionReconnect(String),
+    ConnectionDisconnect(PathBuf),
+    ConnectionEdit(String),
+    ConnectionDelete(String),
+    /// Save an open connection (by root).
+    ConnectionSaveOpen(PathBuf),
+    ConnectionChecked(PathBuf, Result<(), String>),
+    ConnectionOpened {
+        id: String,
+        navigate: bool,
+        result: Result<PathBuf, fs_ops::vfs::ConnectError>,
+    },
     /// Opens a web address in the default browser.
     OpenUrl(&'static str),
     FindPatternChanged(String),
@@ -140,6 +176,9 @@ enum FavoriteFocus {
     AddButton,
     CloseButton,
 }
+
+/// The user's guide (`docs/` in the repository, on GitHub Pages).
+const HELP_URL: &str = "https://chillalabs.github.io/twofip/";
 
 /// Text sizes in the Favorites dialog: a step below libcosmic's body (14)
 /// and caption (12).
@@ -216,7 +255,13 @@ fn color_theme_name(theme: ColorTheme) -> String {
 }
 
 /// Icon styles offered in Settings, in dropdown order.
-const ICON_STYLES: [IconStyle; 2] = [IconStyle::Colorful, IconStyle::Monochrome];
+const ICON_STYLES: [IconStyle; 5] = [
+    IconStyle::Colorful,
+    IconStyle::Vivid,
+    IconStyle::Classic,
+    IconStyle::Soft,
+    IconStyle::Monochrome,
+];
 
 /// Dropdown label for a file name size, e.g. "Small (13 px)".
 fn font_size_name(size: FontSize) -> String {
@@ -233,6 +278,9 @@ fn icon_style_name(style: IconStyle) -> String {
     match style {
         IconStyle::Colorful => fl!("icon-style-colorful"),
         IconStyle::Monochrome => fl!("icon-style-monochrome"),
+        IconStyle::Vivid => fl!("icon-style-vivid"),
+        IconStyle::Classic => fl!("icon-style-classic"),
+        IconStyle::Soft => fl!("icon-style-soft"),
     }
 }
 
@@ -242,6 +290,7 @@ enum DrawerPage {
     Settings,
     Favorites,
     About,
+    Connections,
 }
 
 /// Paths put aside by Cut/Copy, waiting for a Paste.
@@ -286,6 +335,9 @@ pub struct App {
     keybinds: HashMap<KeyBind, Action>,
     operation: Option<OperationState>,
     confirm_delete: Option<Vec<PathBuf>>,
+    /// Whether the Delete dialog deletes for good (Shift+Delete) instead of
+    /// moving to the trash.
+    delete_permanently: bool,
     rename: Option<RenameState>,
     new_folder: Option<NewFolderState>,
     /// Set while `self.operation` has an `OpEvent::Conflict` awaiting an answer.
@@ -316,6 +368,14 @@ pub struct App {
     favorite_focus: FavoriteFocus,
     /// The Find Files dialog, while open.
     find: Option<FindState>,
+    /// The "Connect to server" dialog, while open.
+    connect: Option<ConnectState>,
+    /// Its protocol names (the dropdown borrows them).
+    connect_protocols: Vec<String>,
+    /// The Connections panel's saved connections.
+    saved_connections: Vec<fs_ops::connections::SavedConnection>,
+    /// Their last known state, by connection root.
+    connection_checks: HashMap<PathBuf, crate::connections_panel::Check>,
     favorite_add_button: widget::Id,
     favorite_close_button: widget::Id,
     favorite_name_input: widget::Id,
@@ -450,6 +510,13 @@ impl App {
                     let step = if modifiers.shift() { 2 } else { 1 };
                     return self.focus_dialog_field(self.dialog_focus + step);
                 }
+                if key == Key::Named(Named::Tab)
+                    && (modifiers.is_empty() || modifiers == Modifiers::SHIFT)
+                {
+                    if let Some(connect) = &mut self.connect {
+                        return connect.move_focus(if modifiers.shift() { -1 } else { 1 });
+                    }
+                }
                 if self.dialog_open() {
                     // A modal dialog is open; let its own controls (and `on_escape`)
                     // handle input instead of firing global shortcuts underneath it.
@@ -481,7 +548,14 @@ impl App {
                 if self.drawer.is_some()
                     && !matches!(
                         action,
-                        Some(Action::Favorites | Action::Settings | Action::About | Action::Quit)
+                        Some(
+                            Action::Favorites
+                                | Action::Settings
+                                | Action::About
+                                | Action::Connections
+                                | Action::ConnectToServer
+                                | Action::Quit
+                        )
                     )
                 {
                     return Task::none();
@@ -529,9 +603,15 @@ impl App {
                 if self.operation.is_some() {
                     return Task::none();
                 }
-                self.spawn_operation(OpKind::Delete, |cancel, _| {
-                    fs_ops::ops::delete_to_trash(sources, cancel)
-                })
+                if self.delete_permanently {
+                    self.spawn_operation(OpKind::Delete, |cancel, _| {
+                        fs_ops::ops::delete_permanently(sources, cancel)
+                    })
+                } else {
+                    self.spawn_operation(OpKind::Delete, |cancel, _| {
+                        fs_ops::ops::delete_to_trash(sources, cancel)
+                    })
+                }
             }
             Message::CancelDelete => {
                 self.confirm_delete = None;
@@ -799,6 +879,221 @@ impl App {
                 Task::none()
             }
             Message::FindStart => self.start_find(),
+            Message::ConnectProtocol(index) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.set_protocol(index);
+                }
+                Task::none()
+            }
+            Message::ConnectHost(text) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.host = text;
+                }
+                Task::none()
+            }
+            Message::ConnectPort(text) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.port = text.chars().filter(char::is_ascii_digit).collect();
+                }
+                Task::none()
+            }
+            Message::ConnectUser(text) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.user = text;
+                }
+                Task::none()
+            }
+            Message::ConnectPassword(text) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.password = text;
+                }
+                Task::none()
+            }
+            Message::ConnectTogglePassword => {
+                if let Some(connect) = &mut self.connect {
+                    connect.password_hidden = !connect.password_hidden;
+                }
+                Task::none()
+            }
+            Message::ConnectSubmit => self.start_connect(false),
+            Message::ConnectTrust => self.start_connect(true),
+            Message::ConnectCancel => {
+                self.connect = None;
+                Task::none()
+            }
+            Message::ConnectFinished(result) => {
+                let Some(connect) = &mut self.connect else {
+                    return Task::none(); // Cancelled meanwhile.
+                };
+                match result {
+                    Ok(path) => {
+                        self.connect = None;
+                        if let Some(location) = fs_ops::vfs::RemoteLocation::parse(&path) {
+                            self.connection_checks.insert(
+                                PathBuf::from(location.root()),
+                                crate::connections_panel::Check::Connected,
+                            );
+                        }
+                        self.pane_mut(self.active_pane)
+                            .update(PaneMessage::Navigate(path))
+                    }
+                    Err(error) => {
+                        connect.failed(error);
+                        Task::none()
+                    }
+                }
+            }
+            Message::ConnectName(text) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.name = text;
+                }
+                Task::none()
+            }
+            Message::ConnectSave(save) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.save = save;
+                }
+                Task::none()
+            }
+            Message::ConnectRemember(remember) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.remember_password = remember;
+                }
+                Task::none()
+            }
+            Message::ConnectSaveOnly => {
+                let plan = match self.save_from_dialog() {
+                    Ok(plan) => plan,
+                    Err(message) => {
+                        if let Some(connect) = &mut self.connect {
+                            connect.status = ConnectStatus::Failed(message);
+                        }
+                        return Task::none();
+                    }
+                };
+                cosmic::task::future(async move { Message::ConnectSavedOnly(plan.apply().await) })
+            }
+            Message::ConnectSavedOnly(result) => {
+                match result {
+                    Ok(()) => self.connect = None,
+                    Err(err) => {
+                        if let Some(connect) = &mut self.connect {
+                            connect.status = ConnectStatus::Failed(err);
+                        }
+                    }
+                }
+                Task::none()
+            }
+            Message::ConnectionAdd => {
+                let connect = ConnectState::new_saved();
+                let focus = connect.focus_current();
+                self.connect = Some(connect);
+                focus
+            }
+            Message::ConnectionOpen(id) => {
+                let Some(connection) = self.saved_connections.iter().find(|c| c.id == id) else {
+                    return Task::none();
+                };
+                let root = connection.root();
+                if fs_ops::vfs::is_connected(&root) {
+                    let home = fs_ops::vfs::home(&root).unwrap_or(root);
+                    return self
+                        .pane_mut(self.active_pane)
+                        .update(PaneMessage::Navigate(home));
+                }
+                self.open_saved_connection(&id, true)
+            }
+            Message::ConnectionOpenRoot(root) => {
+                let home = fs_ops::vfs::home(&root).unwrap_or(root);
+                self.pane_mut(self.active_pane)
+                    .update(PaneMessage::Navigate(home))
+            }
+            Message::ConnectionReconnect(id) => {
+                if let Some(connection) = self.saved_connections.iter().find(|c| c.id == id) {
+                    fs_ops::vfs::disconnect(&connection.root());
+                }
+                self.open_saved_connection(&id, false)
+            }
+            Message::ConnectionOpened {
+                id,
+                navigate,
+                result,
+            } => {
+                let Some(connection) = self.saved_connections.iter().find(|c| c.id == id).cloned()
+                else {
+                    return Task::none();
+                };
+                match result {
+                    Ok(path) => {
+                        self.connection_checks.insert(
+                            connection.root(),
+                            crate::connections_panel::Check::Connected,
+                        );
+                        // A connection no tab shows would be closed right
+                        // away: show it.
+                        if navigate || !self.server_in_use(&connection.root()) {
+                            self.pane_mut(self.active_pane)
+                                .update(PaneMessage::Navigate(path))
+                        } else {
+                            self.reload_both_panes()
+                        }
+                    }
+                    Err(error) => {
+                        // Let the user fix it: trust the key, type the password...
+                        self.connection_checks.remove(&connection.root());
+                        let mut connect = ConnectState::for_saved(&connection);
+                        connect.failed(error);
+                        let focus = connect.focus_current();
+                        self.connect = Some(connect);
+                        focus
+                    }
+                }
+            }
+            Message::ConnectionDisconnect(root) => {
+                fs_ops::vfs::disconnect(&root);
+                self.connection_checks.remove(&root);
+                self.leave_server(&root)
+            }
+            Message::ConnectionEdit(id) => {
+                let Some(connection) = self.saved_connections.iter().find(|c| c.id == id) else {
+                    return Task::none();
+                };
+                let connect = ConnectState::for_saved(connection);
+                let focus = connect.focus_current();
+                self.connect = Some(connect);
+                focus
+            }
+            Message::ConnectionDelete(id) => {
+                let Some(index) = self.saved_connections.iter().position(|c| c.id == id) else {
+                    return Task::none();
+                };
+                let removed = self.saved_connections.remove(index);
+                self.persist_connections();
+                if !removed.remember_password {
+                    return Task::none();
+                }
+                cosmic::task::future(async move {
+                    if let Err(err) = fs_ops::connections::delete_password(&removed.id).await {
+                        eprintln!("failed to forget the password of {}: {err}", removed.name);
+                    }
+                    Message::Launched
+                })
+            }
+            Message::ConnectionSaveOpen(root) => {
+                let mut connect = ConnectState::new(&root);
+                connect.save = true;
+                let focus = connect.focus_current();
+                self.connect = Some(connect);
+                focus
+            }
+            Message::ConnectionChecked(root, result) => {
+                let check = match result {
+                    Ok(()) => crate::connections_panel::Check::Connected,
+                    Err(err) => crate::connections_panel::Check::Lost(err),
+                };
+                self.connection_checks.insert(root, check);
+                Task::none()
+            }
             Message::OpenUrl(url) => {
                 launch::open_with_default_app(std::path::Path::new(url));
                 Task::none()
@@ -944,11 +1239,14 @@ impl App {
             }
             Action::Copy => self.start_operation(OpKind::Copy),
             Action::Move => self.start_operation(OpKind::Move),
-            Action::Delete => {
+            Action::Delete | Action::DeletePermanently => {
                 let sources = self.pane(self.active_pane).selected_paths();
                 if sources.is_empty() {
                     return Task::none();
                 }
+                // Servers have no trash: deleting there is always permanent.
+                self.delete_permanently = action == Action::DeletePermanently
+                    || sources.iter().any(|path| fs_ops::vfs::is_remote(path));
                 self.confirm_delete = Some(sources);
                 // Focus "Delete" so Enter confirms (Escape still cancels).
                 self.focus_delete_button(true)
@@ -1025,12 +1323,13 @@ impl App {
                 // Folders in a multi-selection are skipped: we can't navigate
                 // into several at once, and handing them to `xdg-open` would
                 // open them in a different file manager.
-                for path in self.pane(self.active_pane).selected_paths() {
-                    if !path.is_dir() {
-                        open_with_default_app(&path);
-                    }
-                }
-                Task::none()
+                Task::batch(
+                    self.pane(self.active_pane)
+                        .selected_paths()
+                        .into_iter()
+                        .filter(|path| !path.is_dir())
+                        .map(launch::open),
+                )
             }
             Action::OpenWith => {
                 let paths = self.pane(self.active_pane).selected_paths();
@@ -1096,6 +1395,36 @@ impl App {
             Action::Refresh => self.reload_both_panes(),
             Action::Find => self.toggle_find(),
             Action::About => self.toggle_about(),
+            Action::Help => {
+                launch::open_with_default_app(std::path::Path::new(HELP_URL));
+                Task::none()
+            }
+            Action::ConnectToServer => {
+                self.close_drawer();
+                self.close_find();
+                let connect = ConnectState::new(&self.pane(self.active_pane).current_dir());
+                let focus = connect.focus_current();
+                self.connect = Some(connect);
+                focus
+            }
+            Action::Connections => {
+                self.close_find();
+                self.toggle_drawer(DrawerPage::Connections);
+                if self.drawer == Some(DrawerPage::Connections) {
+                    self.check_connections()
+                } else {
+                    Task::none()
+                }
+            }
+            Action::Disconnect => {
+                let current = self.pane(self.active_pane).current_dir();
+                if !fs_ops::vfs::is_remote(&current) {
+                    return Task::none();
+                }
+                fs_ops::vfs::disconnect(&current);
+                self.pane_mut(self.active_pane)
+                    .update(PaneMessage::Navigate(home_dir()))
+            }
             Action::ToggleHiddenFiles => {
                 self.set_hide_hidden_files(!self.settings.hide_hidden_files)
             }
@@ -1432,6 +1761,159 @@ impl App {
         self.close_find();
         self.toggle_drawer(DrawerPage::About);
         Task::none()
+    }
+
+    /// Connects with the dialog's settings (`trust`: the user accepted an
+    /// unknown server key); the result comes back as `ConnectFinished`.
+    fn start_connect(&mut self, trust: bool) -> Task<Message> {
+        let Some(connect) = &mut self.connect else {
+            return Task::none();
+        };
+        if connect.status == ConnectStatus::Connecting {
+            return Task::none();
+        }
+        let params = match connect.params(trust) {
+            Ok(params) => params,
+            Err(message) => {
+                connect.status = ConnectStatus::Failed(message);
+                return Task::none();
+            }
+        };
+        let plan = match self.save_from_dialog() {
+            Ok(plan) => plan,
+            Err(message) => {
+                if let Some(connect) = &mut self.connect {
+                    connect.status = ConnectStatus::Failed(message);
+                }
+                return Task::none();
+            }
+        };
+        if let Some(connect) = &mut self.connect {
+            connect.status = ConnectStatus::Connecting;
+        }
+        cosmic::task::future(async move {
+            if let Err(err) = plan.apply().await {
+                return Message::ConnectFinished(Err(fs_ops::vfs::ConnectError::Other(err)));
+            }
+            let mut params = params;
+            if params.password.is_none() {
+                params.password = plan.stored_password().await;
+            }
+            Message::ConnectFinished(fs_ops::vfs::connect(params).await)
+        })
+    }
+
+    /// Saves the dialog's connection when "Save in Connections" is ticked
+    /// (adding it, or updating the one being edited), and returns the
+    /// keyring work for its password.
+    fn save_from_dialog(&mut self) -> Result<crate::connect::KeyringPlan, String> {
+        let Some(connect) = &mut self.connect else {
+            return Ok(Default::default());
+        };
+        if !connect.save {
+            return Ok(Default::default());
+        }
+        let id = connect
+            .editing
+            .clone()
+            .unwrap_or_else(fs_ops::connections::new_id);
+        let saved = connect.saved(id.clone())?;
+        // Later attempts (e.g. after trusting a key) update this one.
+        connect.editing = Some(id.clone());
+        let plan = connect.keyring_plan(Some(id.clone()), &saved.name);
+        match self.saved_connections.iter_mut().find(|c| c.id == id) {
+            Some(existing) => *existing = saved,
+            None => self.saved_connections.push(saved),
+        }
+        self.persist_connections();
+        Ok(plan)
+    }
+
+    /// Whether any tab, in either panel, shows a folder on the server `root`.
+    fn server_in_use(&self, root: &std::path::Path) -> bool {
+        [PaneId::Left, PaneId::Right]
+            .into_iter()
+            .flat_map(|id| self.pane(id).tab_dirs())
+            .any(|dir| {
+                fs_ops::vfs::RemoteLocation::parse(&dir)
+                    .is_some_and(|location| std::path::Path::new(&location.root()) == root)
+            })
+    }
+
+    /// Closes the connections no tab shows anymore (e.g. their last tab was
+    /// closed). Not while an operation runs: it may be copying from one.
+    fn close_unused_connections(&mut self) {
+        if self.operation.is_some() {
+            return;
+        }
+        for root in fs_ops::vfs::open_connections() {
+            if !self.server_in_use(&root) {
+                fs_ops::vfs::disconnect(&root);
+                self.connection_checks.remove(&root);
+            }
+        }
+    }
+
+    fn persist_connections(&self) {
+        if let Err(err) = fs_ops::connections::save(&self.saved_connections) {
+            eprintln!("failed to save connections: {err}");
+        }
+    }
+
+    /// Checks every open connection, for the Connections panel's status.
+    fn check_connections(&mut self) -> Task<Message> {
+        let roots = fs_ops::vfs::open_connections();
+        for root in &roots {
+            self.connection_checks
+                .insert(root.clone(), crate::connections_panel::Check::Busy);
+        }
+        Task::batch(roots.into_iter().map(|root| {
+            cosmic::task::future(async move {
+                let result = fs_ops::vfs::check(&root).await;
+                Message::ConnectionChecked(root, result)
+            })
+        }))
+    }
+
+    /// Opens the saved connection `id` (with its stored password); the
+    /// result comes back as `ConnectionOpened`.
+    fn open_saved_connection(&mut self, id: &str, navigate: bool) -> Task<Message> {
+        let Some(connection) = self.saved_connections.iter().find(|c| c.id == id).cloned() else {
+            return Task::none();
+        };
+        self.connection_checks
+            .insert(connection.root(), crate::connections_panel::Check::Busy);
+        let id = id.to_string();
+        cosmic::task::future(async move {
+            let password = if connection.remember_password {
+                fs_ops::connections::load_password(&connection.id)
+                    .await
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            let result = fs_ops::vfs::connect(connection.params(password)).await;
+            Message::ConnectionOpened {
+                id,
+                navigate,
+                result,
+            }
+        })
+    }
+
+    /// Sends both panels showing the server `root` home (it was closed).
+    fn leave_server(&mut self, root: &std::path::Path) -> Task<Message> {
+        let mut tasks = Vec::new();
+        for id in [PaneId::Left, PaneId::Right] {
+            let current = self.pane(id).current_dir();
+            let on_it = fs_ops::vfs::RemoteLocation::parse(&current)
+                .is_some_and(|location| std::path::Path::new(&location.root()) == root);
+            if on_it {
+                tasks.push(self.pane_mut(id).update(PaneMessage::Navigate(home_dir())));
+            }
+        }
+        Task::batch(tasks)
     }
 
     /// Opens the Find Files dialog on the active panel's folder, or closes it.
@@ -1839,6 +2321,7 @@ impl App {
             || self.compress.is_some()
             || self.open_with.is_some()
             || self.details.is_some()
+            || self.connect.is_some()
     }
 
     /// True while any modal dialog is showing.
@@ -1945,6 +2428,7 @@ impl Application for App {
             keybinds: default_keybinds(),
             operation: None,
             confirm_delete: None,
+            delete_permanently: false,
             rename: None,
             new_folder: None,
             pending_conflict: None,
@@ -1953,6 +2437,10 @@ impl Application for App {
             favorite_cursor: None,
             favorite_focus: FavoriteFocus::List,
             find: None,
+            connect: None,
+            connect_protocols: crate::connect::protocol_names(),
+            saved_connections: fs_ops::connections::load(),
+            connection_checks: HashMap::new(),
             favorite_add_button: widget::Id::unique(),
             favorite_close_button: widget::Id::unique(),
             favorite_name_input: widget::Id::unique(),
@@ -1988,6 +2476,7 @@ impl Application for App {
     fn update(&mut self, message: Self::Message) -> Task<Message> {
         let task = self.handle_message(message);
         self.save_session_if_changed();
+        self.close_unused_connections();
         task
     }
 
@@ -2004,6 +2493,7 @@ impl Application for App {
             &self.keybinds,
             self.clipboard.is_some(),
             self.pane(self.active_pane).view_mode(),
+            fs_ops::vfs::is_remote(&self.pane(self.active_pane).current_dir()),
         )
     }
 
@@ -2017,6 +2507,11 @@ impl Application for App {
                 context_drawer::context_drawer(self.favorites_page(), Message::CloseDrawer)
                     .title(fl!("favorites"))
             }
+            DrawerPage::Connections => context_drawer::context_drawer(
+                crate::connections_panel::view(&self.saved_connections, &self.connection_checks),
+                Message::CloseDrawer,
+            )
+            .title(fl!("connections")),
             DrawerPage::About => context_drawer::context_drawer(
                 crate::about::view(Self::APP_ID),
                 Message::CloseDrawer,
@@ -2028,6 +2523,9 @@ impl Application for App {
 
     fn on_escape(&mut self) -> Task<Message> {
         if self.rename.take().is_some() {
+            return Task::none();
+        }
+        if self.connect.take().is_some() {
             return Task::none();
         }
         if self.confirm_delete.take().is_some() {
@@ -2150,6 +2648,10 @@ impl Application for App {
             return Some(details_dialog(details));
         }
 
+        if let Some(connect) = &self.connect {
+            return Some(crate::connect::view(connect, &self.connect_protocols));
+        }
+
         if let Some(find) = &self.find {
             return Some(crate::find::view(find));
         }
@@ -2204,16 +2706,25 @@ impl Application for App {
         }
 
         if let Some(sources) = &self.confirm_delete {
-            let body = match sources.as_slice() {
-                [single] => fl!("delete-one", name = tab_label(single)),
-                many => fl!("delete-many", count = many.len()),
+            let (title, body) = if self.delete_permanently {
+                let body = match sources.as_slice() {
+                    [single] => fl!("delete-permanently-one", name = tab_label(single)),
+                    many => fl!("delete-permanently-many", count = many.len()),
+                };
+                (fl!("delete-permanently"), body)
+            } else {
+                let body = match sources.as_slice() {
+                    [single] => fl!("delete-one", name = tab_label(single)),
+                    many => fl!("delete-many", count = many.len()),
+                };
+                (fl!("delete"), body)
             };
             return Some(
                 widget::dialog()
-                    .title(fl!("delete"))
+                    .title(title.clone())
                     .body(body)
                     .primary_action(
-                        widget::button::destructive(fl!("delete"))
+                        widget::button::destructive(title)
                             .id(self.confirm_delete_button.clone())
                             .on_press(Message::ConfirmDelete),
                     )

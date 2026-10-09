@@ -1,3 +1,4 @@
+pub mod connections;
 pub mod details;
 mod entry;
 mod error;
@@ -11,6 +12,7 @@ pub mod session;
 pub mod settings;
 pub mod thumbnail;
 pub mod user_dirs;
+pub mod vfs;
 
 pub use entry::{DirEntry, EntryKind};
 pub use error::FsError;

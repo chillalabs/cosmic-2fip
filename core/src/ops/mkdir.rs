@@ -2,6 +2,11 @@ use std::path::PathBuf;
 
 /// Creates a new directory named `name` inside `parent`, returning its path.
 pub async fn create_dir(parent: PathBuf, name: String) -> Result<PathBuf, String> {
+    if let Some(location) = crate::vfs::RemoteLocation::parse(&parent) {
+        let path = location.join(&name).to_path();
+        crate::vfs::create_dir(&path).await?;
+        return Ok(path);
+    }
     let path = parent.join(&name);
     tokio::fs::create_dir(&path)
         .await

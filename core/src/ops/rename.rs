@@ -2,6 +2,14 @@ use std::path::PathBuf;
 
 /// Renames `path` to `new_name` within its parent directory, returning the new path.
 pub async fn rename(path: PathBuf, new_name: String) -> Result<PathBuf, String> {
+    if let Some(location) = crate::vfs::RemoteLocation::parse(&path) {
+        let parent = location
+            .parent()
+            .ok_or_else(|| format!("{} has no parent folder", path.display()))?;
+        let dest = parent.join(&new_name).to_path();
+        crate::vfs::rename(&path, &dest).await?;
+        return Ok(dest);
+    }
     let Some(parent) = path.parent() else {
         return Err(format!("{} has no parent directory", path.display()));
     };

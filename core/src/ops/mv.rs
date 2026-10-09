@@ -19,7 +19,13 @@ pub fn move_paths(
     conflict: ConflictHandle,
 ) -> impl Stream<Item = OpEvent> {
     let (tx, rx) = mpsc::channel(16);
-    tokio::spawn(run(sources, dest_dir, cancel, conflict, tx));
+    if super::involves_server(&sources, &dest_dir) {
+        tokio::spawn(crate::vfs::transfer::run_copy(
+            sources, dest_dir, true, cancel, conflict, tx,
+        ));
+    } else {
+        tokio::spawn(run(sources, dest_dir, cancel, conflict, tx));
+    }
     ReceiverStream::new(rx)
 }
 

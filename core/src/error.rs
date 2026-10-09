@@ -7,4 +7,7 @@ pub enum FsError {
     ReadDir { path: PathBuf, source: io::Error },
     #[error("failed to read metadata for {path}: {source}")]
     Metadata { path: PathBuf, source: io::Error },
+    /// A server folder (sftp://, ftp://) couldn't be listed.
+    #[error("{0}")]
+    Remote(String),
 }

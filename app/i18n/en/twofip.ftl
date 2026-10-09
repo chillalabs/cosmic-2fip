@@ -4,6 +4,8 @@
 menu-file = File
 menu-edit = Edit
 menu-view = View
+menu-help = Help
+help = Help
 new-tab = New Tab
 new-folder = New Folder
 close-tab = Close Tab
@@ -92,6 +94,9 @@ settings-icon-style = Icon style
 settings-icon-style-description = Colorful matches the COSMIC Files app
 icon-style-colorful = Colorful
 icon-style-monochrome = Monochrome
+icon-style-vivid = Vivid
+icon-style-classic = Windows style
+icon-style-soft = macOS style
 settings-font-size = File name size
 settings-font-size-description = Smaller text fits more files on screen
 font-size-default = Default ({ $px } px)
@@ -135,6 +140,9 @@ new-name = New name
 ## Delete dialog
 delete-one = Move "{ $name }" to the trash?
 delete-many = Move { $count } items to the trash?
+delete-permanently = Delete permanently
+delete-permanently-one = Permanently delete "{ $name }"? This can't be undone.
+delete-permanently-many = Permanently delete { $count } items? This can't be undone.
 
 ## Function key bar (the "F2" etc. prefix is added by the app)
 fkey-rename = Rename
@@ -204,3 +212,47 @@ about-description = A keyboard-driven, dual-pane file manager, inspired by Total
 about-version = Version:
 about-repository = Repository:
 about-license = License:
+
+## Connect to server dialog
+connect-to-server = Connect to server…
+disconnect = Disconnect
+connect-title = Connect to server
+connect = Connect
+connect-host = Server (e.g. files.example.com)
+connect-port = Port
+connect-user = User name
+connect-password = Password
+connect-hint-sftp = Your SSH agent and the keys in ~/.ssh are tried first, so the password is optional.
+connect-hint-ftp = Leave the user name empty to log in anonymously. FTP sends the password unencrypted: prefer FTPS or SFTP.
+connect-hint-ftps = FTP encrypted with TLS. The server needs a valid certificate.
+connect-connecting = Connecting…
+connect-error-host = Type the server's name or address.
+connect-error-port = The port must be a number.
+connect-error-login = Login failed: check the user name and password.
+connect-unknown-host-title = Unknown server
+connect-unknown-host-body = 2fip hasn't connected to { $host } before. Check that this key fingerprint matches the server's, then trust it to connect. It will be saved in ~/.ssh/known_hosts.
+connect-trust = Trust and connect
+connect-key-changed-title = The server's key has changed
+connect-key-changed-body = The key of { $host } doesn't match the one saved in ~/.ssh/known_hosts. Someone may be intercepting the connection, so 2fip won't connect. If the server was reinstalled, remove its old line from ~/.ssh/known_hosts.
+
+## Connections panel
+connections = Connections
+tooltip-connections = Connections
+connection-add = Add connection
+connection-edit = Edit connection
+connection-save-only = Save
+connection-save = Save connection
+connection-open = Open
+connection-reconnect = Reconnect
+connection-status-busy = Connecting…
+connection-status-connected = Connected
+connection-status-lost = Connection lost
+connection-status-closed = Not connected
+connections-saved = Saved
+connections-open-unsaved = Open, not saved
+connections-empty = No saved connections yet.
+connections-hint = Passwords you choose to remember are kept in the system keyring (GNOME Keyring, KWallet), encrypted, never in 2fip's files.
+connect-name = Name (optional)
+connect-password-stored = Stored in the keyring (type to change)
+connect-save = Save in Connections
+connect-remember-password = Remember the password in the system keyring

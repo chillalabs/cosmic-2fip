@@ -32,7 +32,7 @@ impl ConflictHandle {
 
     /// Blocks until the UI calls `respond`. If the sender is dropped without
     /// an answer (e.g. the operation's stream is dropped), defaults to `Skip`.
-    pub(super) async fn ask(&self) -> ConflictResolution {
+    pub(crate) async fn ask(&self) -> ConflictResolution {
         let (tx, rx) = oneshot::channel();
         *self.pending.lock().unwrap() = Some(tx);
         rx.await.unwrap_or(ConflictResolution::Skip)

@@ -10,11 +10,10 @@ use cosmic::Element;
 
 use crate::app::{Message, PaneId};
 use crate::context_menu::item_menu;
-use crate::dnd::FileList;
+use crate::dnd::{FileList, TabDrag};
 use crate::file_item::{format_size, Column, FileItem, ListingOptions};
 use crate::fl;
 use crate::keybinds::Action;
-use crate::launch::open_with_default_app;
 use crate::tab::{tab_label, DirSize, PendingSelect, TabState};
 use cosmic::iced::clipboard::dnd::DndAction;
 use fs_ops::settings::{FontSize, ViewMode};
@@ -120,6 +119,8 @@ pub enum PaneMessage {
     /// Shows the next (`true`) or previous tab, wrapping around.
     CycleTab(bool),
     CloseTab(TabId),
+    /// A tab from the other panel was dropped here: open a copy of it.
+    TabDropped(Option<TabDrag>),
     CloseActiveTab,
     SelectTab(TabId),
 }
@@ -202,7 +203,14 @@ impl PaneState {
                 active_tab = index;
             }
             if let Some(tab_state) = self.tabs.data::<TabState>(tab) {
-                tabs.push(tab_state.current_dir.clone());
+                // Server connections don't survive a restart (and need a
+                // password): such tabs come back at home.
+                let dir = if fs_ops::vfs::is_remote(&tab_state.current_dir) {
+                    home_dir()
+                } else {
+                    tab_state.current_dir.clone()
+                };
+                tabs.push(dir);
                 tab_view_modes.push(tab_state.view_mode);
             }
         }
@@ -253,8 +261,7 @@ impl PaneState {
                     let path = item.path.clone();
                     return self.navigate_active(path);
                 }
-                open_with_default_app(&item.path);
-                Task::none()
+                crate::launch::open(item.path.clone())
             }
             PaneMessage::EntrySelected(entity, mode) => {
                 if let Some(tab_state) = self.tabs.active_data_mut::<TabState>() {
@@ -277,6 +284,8 @@ impl PaneState {
                     .filter_map(|entity| tab_state.entries.item(entity))
                     .filter(|item| item.is_dir())
                     .map(|item| item.path.clone())
+                    // Not on servers yet: that would list every subfolder.
+                    .filter(|path| !fs_ops::vfs::is_remote(path))
                     // Space again on a finished folder recalculates it.
                     .filter(|path| tab_state.dir_sizes.get(path) != Some(&DirSize::Calculating))
                     .collect();
@@ -419,7 +428,8 @@ impl PaneState {
                 let Some(tab_state) = self.tabs.active_data::<TabState>() else {
                     return Task::none();
                 };
-                let Some(parent) = tab_state.current_dir.parent().map(Path::to_path_buf) else {
+                // Local or on a server (stops at the server's root).
+                let Some(parent) = fs_ops::vfs::parent(&tab_state.current_dir) else {
                     return Task::none();
                 };
                 // Land on the folder we came out of, like Total Commander.
@@ -458,17 +468,13 @@ impl PaneState {
                     .active_data::<TabState>()
                     .map(|tab_state| (tab_state.current_dir.clone(), tab_state.view_mode))
                     .unwrap_or_else(|| (PathBuf::from("/"), ViewMode::default()));
-                let mut tab_state = TabState::new(dir.clone());
-                tab_state.view_mode = view_mode;
-                self.tabs
-                    .insert()
-                    .text(tab_label(&dir))
-                    .data(tab_state)
-                    .closable()
-                    .activate();
-                let tab_id = self.tabs.active();
-                load_dir(self.id, tab_id, dir)
+                self.open_tab(dir, view_mode)
             }
+            PaneMessage::TabDropped(tab) => match tab {
+                // Dropped back on its own panel: nothing to copy.
+                Some(tab) if tab.source != self.id => self.open_tab(tab.dir, tab.view_mode),
+                _ => Task::none(),
+            },
             PaneMessage::CloseTab(entity) => {
                 if self.tabs.iter().count() <= 1 {
                     // Always keep at least one tab open.
@@ -529,7 +535,12 @@ impl PaneState {
                     return Task::none();
                 };
                 let path = resolve_typed_path(&text, &self.current_dir(), &home_dir());
-                if path.is_dir() {
+                if fs_ops::vfs::is_remote(&path) {
+                    // A server folder: its listing reports any problem
+                    // (e.g. not connected).
+                    self.cancel_path_edit();
+                    self.navigate_active(path)
+                } else if path.is_dir() {
                     self.cancel_path_edit();
                     self.navigate_active(path)
                 } else if path.exists() {
@@ -546,6 +557,77 @@ impl PaneState {
                 Task::none()
             }
         }
+    }
+
+    /// Opens a new active tab on `dir` with `view_mode`.
+    fn open_tab(&mut self, dir: PathBuf, view_mode: ViewMode) -> Task<Message> {
+        self.cancel_path_edit();
+        let mut tab_state = TabState::new(dir.clone());
+        tab_state.view_mode = view_mode;
+        self.tabs
+            .insert()
+            .text(tab_label(&dir))
+            .data(tab_state)
+            .closable()
+            .activate();
+        let tab_id = self.tabs.active();
+        load_dir(self.id, tab_id, dir)
+    }
+
+    /// The tabs: click to show one, × or a middle click to close it, drag
+    /// one onto the other panel to open a copy there, and double-click the
+    /// empty space beside them for a new tab. Drawn here
+    /// rather than with libcosmic's tab bar, whose drags don't say which tab
+    /// is being dragged.
+    fn tab_strip(&self) -> Element<'_, PaneMessage> {
+        let active = self.tabs.active();
+        let closable = self.tabs.iter().count() > 1;
+        let mut strip = widget::Row::new()
+            .spacing(2)
+            .align_y(cosmic::iced::Alignment::End);
+        for tab in self.tabs.iter() {
+            let Some(tab_state) = self.tabs.data::<TabState>(tab) else {
+                continue;
+            };
+            let label = short_label(self.tabs.text(tab).unwrap_or_default());
+            let is_active = tab == active;
+            let close = widget::button::icon(
+                widget::icon::from_name("window-close-symbolic")
+                    .size(12)
+                    .handle(),
+            )
+            .padding(2)
+            .on_press_maybe(closable.then_some(PaneMessage::CloseTab(tab)));
+            let content = widget::Row::new()
+                .spacing(6)
+                .align_y(cosmic::iced::Alignment::Center)
+                .push(widget::text::body(label.clone()))
+                .push(close);
+            let tab_box = widget::container(content)
+                .padding([3, 4, 3, 12])
+                .class(tab_class(is_active));
+            let clickable = widget::mouse_area(tab_box)
+                .on_press(PaneMessage::SelectTab(tab))
+                .on_middle_press(PaneMessage::CloseTab(tab));
+            let payload = TabDrag {
+                source: self.id,
+                dir: tab_state.current_dir.clone(),
+                view_mode: tab_state.view_mode,
+            };
+            strip = strip.push(
+                widget::dnd_source::<PaneMessage, TabDrag>(clickable)
+                    .drag_content(move || payload.clone())
+                    .drag_icon(move |_| tab_drag_picture(&label)),
+            );
+        }
+        // A double click on the empty space beside the tabs opens a new tab
+        // on the current folder, like Total Commander. (A tab takes its own
+        // clicks, so double-clicking a tab doesn't.)
+        widget::mouse_area(
+            widget::container(widget::scrollable::horizontal(strip)).width(Length::Fill),
+        )
+        .on_double_click(PaneMessage::NewTab)
+        .into()
     }
 
     /// Opens the folder holding `path` in the active tab, with `path` selected.
@@ -697,6 +779,10 @@ impl PaneState {
         let Some(tab_state) = self.tabs.data::<TabState>(tab) else {
             return Task::none();
         };
+        if fs_ops::vfs::is_remote(&tab_state.current_dir) {
+            // That would download every file; not on a server.
+            return Task::none();
+        }
         let mut wanted = Vec::new();
         for entity in tab_state.entries.iter() {
             let Some(item) = tab_state.entries.item(entity) else {
@@ -749,6 +835,15 @@ impl PaneState {
     }
 
     /// The active tab's current directory.
+    /// The folders of all this pane's tabs.
+    pub fn tab_dirs(&self) -> Vec<PathBuf> {
+        self.tabs
+            .iter()
+            .filter_map(|tab| self.tabs.data::<TabState>(tab))
+            .map(|tab_state| tab_state.current_dir.clone())
+            .collect()
+    }
+
     pub fn current_dir(&self) -> PathBuf {
         self.tabs
             .active_data::<TabState>()
@@ -827,9 +922,7 @@ impl PaneState {
         let active = self.tabs.active();
         let tab_state = self.tabs.data::<TabState>(active);
 
-        let tab_bar = widget::tab_bar::horizontal(&self.tabs)
-            .on_activate(PaneMessage::SelectTab)
-            .on_close(PaneMessage::CloseTab);
+        let tab_bar = self.tab_strip();
 
         let nav_button = |icon: widget::icon::Handle, tooltip: String, message| {
             widget::button::icon(icon)
@@ -917,7 +1010,7 @@ impl PaneState {
             }
         };
 
-        widget::Column::new()
+        let column = widget::Column::new()
             .spacing(8)
             .push(tab_bar)
             .push(header)
@@ -932,8 +1025,13 @@ impl PaneState {
             }))
             .push(widget::text(self.status_text()))
             .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+            .height(Length::Fill);
+
+        // A tab dragged from the other panel opens a copy here.
+        widget::dnd_destination::DndDestination::for_data::<TabDrag>(column, |tab, _| {
+            PaneMessage::TabDropped(tab)
+        })
+        .into()
     }
 }
 
@@ -979,21 +1077,23 @@ impl PaneState {
         let mut crumbs = widget::Row::new()
             .spacing(0)
             .align_y(cosmic::iced::Alignment::Center);
-        let folders: Vec<&Path> = tab_state.current_dir.ancestors().collect();
-        for (index, folder) in folders.iter().rev().enumerate() {
+        // "/ › home › me", or for a server "me@host › home › me".
+        let remote = fs_ops::vfs::is_remote(&tab_state.current_dir);
+        for (index, (label, folder)) in fs_ops::vfs::breadcrumbs(&tab_state.current_dir)
+            .into_iter()
+            .enumerate()
+        {
             if index > 0 {
                 crumbs = crumbs.push(widget::icon::from_name("pan-end-symbolic").size(12));
             }
-            let label = match folder.file_name() {
-                Some(name) => name.to_string_lossy().into_owned(),
-                None => folder.display().to_string(), // the root, "/"
-            };
-            crumbs = crumbs.push(
-                widget::button::text(label)
-                    .class(path_button_class(is_active))
-                    .tooltip(folder.display().to_string())
-                    .on_press(PaneMessage::Navigate(folder.to_path_buf())),
-            );
+            let mut button = widget::button::text(label)
+                .class(path_button_class(is_active))
+                .tooltip(folder.display().to_string())
+                .on_press(PaneMessage::Navigate(folder));
+            if remote && index == 0 {
+                button = button.leading_icon(widget::icon::from_name("network-server-symbolic"));
+            }
+            crumbs = crumbs.push(button);
         }
 
         let bar = widget::Row::new()
@@ -1350,6 +1450,65 @@ fn draggable_entry<'a>(
     }
 }
 
+/// A tab's look: the active one tinted with the accent color, the others
+/// a light shade of the text color, all with rounded top corners.
+fn tab_class(active: bool) -> cosmic::theme::Container<'static> {
+    cosmic::theme::Container::custom(move |theme| {
+        let cosmic = theme.cosmic();
+        let (mut background, text) = if active {
+            (cosmic.accent_color(), cosmic.on_bg_color())
+        } else {
+            (cosmic.on_bg_color(), cosmic.on_bg_color())
+        };
+        background.alpha = if active { 0.22 } else { 0.06 };
+        let radius = cosmic.radius_s();
+        widget::container::Style {
+            text_color: Some(text.into()),
+            icon_color: Some(text.into()),
+            background: Some(cosmic::iced::Background::Color(background.into())),
+            border: cosmic::iced::Border {
+                radius: [radius[0], radius[1], 0.0, 0.0].into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    })
+}
+
+/// A tab title shortened to keep tabs narrow: "a-very-long-fold…".
+fn short_label(label: &str) -> String {
+    const MAX: usize = 24;
+    if label.chars().count() <= MAX {
+        label.to_string()
+    } else {
+        let mut short: String = label.chars().take(MAX - 1).collect();
+        short.push('…');
+        short
+    }
+}
+
+/// What follows the pointer while a tab is dragged: the tab's title in a
+/// small accent-tinted box.
+fn tab_drag_picture(
+    label: &str,
+) -> (
+    Element<'static, ()>,
+    cosmic::iced::core::widget::tree::State,
+    cosmic::iced::Vector,
+) {
+    // The text sits in a row: a container takes its widget state from its
+    // content, and the state handed back here must be "none" (a row's),
+    // not a text's.
+    let picture = widget::container(widget::Row::new().push(widget::text::body(label.to_string())))
+        .padding([4, 10])
+        .class(tab_class(true));
+    (
+        picture.into(),
+        cosmic::iced::core::widget::tree::State::None,
+        cosmic::iced::Vector::new(-12.0, -12.0),
+    )
+}
+
 /// How the picture under the pointer looks while dragging.
 #[derive(Debug, Clone, Copy)]
 enum DragLook {
@@ -1490,6 +1649,25 @@ fn drop_highlight_style(theme: &cosmic::Theme) -> widget::container::Style {
 pub fn resolve_typed_path(input: &str, current: &Path, home: &Path) -> PathBuf {
     use std::path::Component;
     let input = input.trim();
+    // A server URL (sftp://, ftp://, ftps://), or a path relative to the
+    // server folder shown: normalized by the VFS, which knows its roots.
+    if let Some(location) = fs_ops::vfs::RemoteLocation::parse(Path::new(input)) {
+        return location.to_path();
+    }
+    if fs_ops::vfs::is_remote(current) && !input.starts_with('~') {
+        let joined = if input.starts_with('/') {
+            fs_ops::vfs::RemoteLocation::parse(current).map(|location| {
+                let mut root = location;
+                root.path = "/".into();
+                PathBuf::from(format!("{}{input}", root.root()))
+            })
+        } else {
+            Some(PathBuf::from(format!("{}/{input}", current.display())))
+        };
+        if let Some(location) = joined.and_then(|path| fs_ops::vfs::RemoteLocation::parse(&path)) {
+            return location.to_path();
+        }
+    }
     let raw = if input.is_empty() {
         current.to_path_buf()
     } else if input == "~" {
@@ -1545,6 +1723,36 @@ fn load_dir(pane: PaneId, tab: TabId, path: PathBuf) -> Task<Message> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn long_tab_titles_are_shortened() {
+        assert_eq!(short_label("Documents"), "Documents");
+        let long = short_label("a-folder-name-that-is-far-too-long-for-a-tab");
+        assert_eq!(long.chars().count(), 24);
+        assert!(long.ends_with('…'));
+    }
+
+    #[test]
+    fn resolves_typed_server_paths() {
+        let home = Path::new("/home/user");
+        let server = Path::new("sftp://me@host:22/home/me");
+        assert_eq!(
+            resolve_typed_path("ftp://files.example.org/pub/", Path::new("/tmp"), home),
+            PathBuf::from("ftp://files.example.org:21/pub")
+        );
+        assert_eq!(
+            resolve_typed_path("docs/../src", server, home),
+            PathBuf::from("sftp://me@host:22/home/me/src")
+        );
+        assert_eq!(
+            resolve_typed_path("/etc", server, home),
+            PathBuf::from("sftp://me@host:22/etc")
+        );
+        assert_eq!(
+            resolve_typed_path("~", server, home),
+            PathBuf::from("/home/user")
+        );
+    }
 
     #[test]
     fn resolves_typed_paths() {

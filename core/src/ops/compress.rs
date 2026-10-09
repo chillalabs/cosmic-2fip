@@ -22,6 +22,16 @@ pub fn compress_zip(
     cancel: CancelHandle,
 ) -> impl Stream<Item = OpEvent> {
     let (tx, rx) = mpsc::channel(16);
+    if sources
+        .iter()
+        .chain([&archive])
+        .any(|path| crate::vfs::is_remote(path))
+    {
+        let _ = tx.try_send(OpEvent::Error(
+            "compressing files on a server isn't supported yet; copy them here first".to_string(),
+        ));
+        return ReceiverStream::new(rx);
+    }
     tokio::task::spawn_blocking(move || {
         let event = match write_archive(&sources, &archive, &cancel, &tx) {
             Ok(()) => OpEvent::Done,

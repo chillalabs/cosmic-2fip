@@ -10,6 +10,9 @@ use crate::error::FsError;
 /// Symlinks are reported as `EntryKind::Symlink` without following them, so
 /// a symlink pointing at a directory is not (yet) treated as navigable.
 pub async fn list_dir(path: &Path) -> Result<Vec<DirEntry>, FsError> {
+    if crate::vfs::is_remote(path) {
+        return crate::vfs::list(path).await.map_err(FsError::Remote);
+    }
     let mut read_dir = fs::read_dir(path)
         .await
         .map_err(|source| FsError::ReadDir {

@@ -3,9 +3,12 @@
 //! `text/uri-list` (plus plain-text paths for apps that only take text).
 
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use cosmic::iced::clipboard::mime::{AllowedMimeTypes, AsMimeTypes};
+use fs_ops::settings::ViewMode;
+
+use crate::app::PaneId;
 
 const URI_LIST: &str = "text/uri-list";
 const PLAIN_TEXT: &str = "text/plain;charset=utf-8";
@@ -25,7 +28,7 @@ impl AsMimeTypes for FileList {
             URI_LIST => self
                 .0
                 .iter()
-                .map(|path| format!("{}\r\n", fs_ops::thumbnail::file_uri(path)))
+                .map(|path| format!("{}\r\n", uri(path)))
                 .collect::<String>(),
             PLAIN_TEXT => self
                 .0
@@ -56,7 +59,7 @@ impl TryFrom<(Vec<u8>, String)> for FileList {
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .filter_map(file_uri_to_path)
+            .filter_map(|line| file_uri_to_path(line).or_else(|| server_uri_to_path(line)))
             .collect();
         if paths.is_empty() {
             Err(())
@@ -64,6 +67,85 @@ impl TryFrom<(Vec<u8>, String)> for FileList {
             Ok(FileList(paths))
         }
     }
+}
+
+/// A tab dragged to the other panel, which opens a copy of it. Its own
+/// MIME type, so only 2fip's panels accept it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TabDrag {
+    pub source: PaneId,
+    pub dir: PathBuf,
+    pub view_mode: ViewMode,
+}
+
+const TAB_MIME: &str = "application/x-2fip-tab";
+
+impl AsMimeTypes for TabDrag {
+    fn available(&self) -> Cow<'static, [String]> {
+        Cow::Owned(vec![TAB_MIME.to_string()])
+    }
+
+    /// `left|list|/the/folder` (the folder last, so it may hold `|`).
+    fn as_bytes(&self, mime_type: &str) -> Option<Cow<'static, [u8]>> {
+        (mime_type == TAB_MIME).then(|| {
+            let source = match self.source {
+                PaneId::Left => "left",
+                PaneId::Right => "right",
+            };
+            let view = match self.view_mode {
+                ViewMode::List => "list",
+                ViewMode::Grid => "grid",
+            };
+            let text = format!("{source}|{view}|{}", self.dir.display());
+            Cow::Owned(text.into_bytes())
+        })
+    }
+}
+
+impl AllowedMimeTypes for TabDrag {
+    fn allowed() -> Cow<'static, [String]> {
+        Cow::Owned(vec![TAB_MIME.to_string()])
+    }
+}
+
+impl TryFrom<(Vec<u8>, String)> for TabDrag {
+    type Error = ();
+
+    fn try_from((data, _mime): (Vec<u8>, String)) -> Result<Self, ()> {
+        let text = String::from_utf8(data).map_err(|_| ())?;
+        let mut parts = text.splitn(3, '|');
+        let source = match parts.next() {
+            Some("left") => PaneId::Left,
+            Some("right") => PaneId::Right,
+            _ => return Err(()),
+        };
+        let view_mode = match parts.next() {
+            Some("list") => ViewMode::List,
+            Some("grid") => ViewMode::Grid,
+            _ => return Err(()),
+        };
+        let dir = PathBuf::from(parts.next().filter(|dir| !dir.is_empty()).ok_or(())?);
+        Ok(TabDrag {
+            source,
+            dir,
+            view_mode,
+        })
+    }
+}
+
+/// `file:///a%20b` for local files; a file on a server keeps its own
+/// `sftp://` / `ftp://` address (apps that speak those protocols can open it).
+fn uri(path: &Path) -> String {
+    if fs_ops::vfs::is_remote(path) {
+        path.display().to_string()
+    } else {
+        fs_ops::thumbnail::file_uri(path)
+    }
+}
+
+/// `sftp://user@host:22/a` and friends, e.g. dragged from the other panel.
+fn server_uri_to_path(uri: &str) -> Option<PathBuf> {
+    fs_ops::vfs::RemoteLocation::parse(Path::new(uri)).map(|location| location.to_path())
 }
 
 /// `file:///a%20b` (or `file://localhost/...`) → `/a b`.
@@ -115,6 +197,27 @@ mod tests {
             [PathBuf::from("/srv/x#y"), PathBuf::from("/etc/hosts")]
         );
         assert!(FileList::try_from((b"https://x".to_vec(), URI_LIST.to_string())).is_err());
+    }
+
+    #[test]
+    fn server_files_keep_their_server_address() {
+        let files = FileList(vec![PathBuf::from("sftp://me@host:22/home/me/a.txt")]);
+        let bytes = files.as_bytes(URI_LIST).unwrap().into_owned();
+        assert_eq!(bytes, b"sftp://me@host:22/home/me/a.txt\r\n");
+        let parsed = FileList::try_from((bytes, URI_LIST.to_string())).unwrap();
+        assert_eq!(parsed, files);
+    }
+
+    #[test]
+    fn tabs_travel_with_their_folder_and_view() {
+        let tab = TabDrag {
+            source: PaneId::Right,
+            dir: PathBuf::from("sftp://me@host:22/a|b"),
+            view_mode: ViewMode::Grid,
+        };
+        let bytes = tab.as_bytes(TAB_MIME).unwrap().into_owned();
+        assert_eq!(TabDrag::try_from((bytes, TAB_MIME.to_string())), Ok(tab));
+        assert!(TabDrag::try_from((b"nonsense".to_vec(), TAB_MIME.to_string())).is_err());
     }
 
     #[test]

@@ -99,6 +99,15 @@ pub enum IconStyle {
     Colorful,
     /// Single-color symbolic icons.
     Monochrome,
+    /// 2fip's own bright icons: a color and symbol per file type, a color
+    /// per special folder.
+    Vivid,
+    /// 2fip's own icons in a Windows-like look: yellow folders with a
+    /// colored badge, white pages with a colored symbol.
+    Classic,
+    /// 2fip's own icons in a macOS-like look: light-blue folders, white
+    /// pages with a colored symbol and band.
+    Soft,
 }
 
 impl Default for Settings {

@@ -1,9 +1,12 @@
 mod about;
 mod app;
+mod connect;
+mod connections_panel;
 mod context_menu;
 mod dnd;
 mod file_item;
 mod find;
+mod icon_sets;
 mod keybinds;
 mod launch;
 mod localize;

@@ -6,6 +6,8 @@
 menu-file = Arquivo
 menu-edit = Editar
 menu-view = Exibir
+menu-help = Ajuda
+help = Ajuda
 new-tab = Nova aba
 new-folder = Nova pasta
 close-tab = Fechar aba
@@ -94,6 +96,9 @@ settings-icon-style = Estilo dos ícones
 settings-icon-style-description = "Colorido" é igual ao app COSMIC Files
 icon-style-colorful = Colorido
 icon-style-monochrome = Monocromático
+icon-style-vivid = Vívido
+icon-style-classic = Estilo Windows
+icon-style-soft = Estilo macOS
 settings-font-size = Tamanho dos nomes de arquivo
 settings-font-size-description = Um texto menor mostra mais arquivos na tela
 font-size-default = Padrão ({ $px } px)
@@ -137,6 +142,9 @@ new-name = Novo nome
 ## Diálogo Excluir
 delete-one = Mover "{ $name }" para a lixeira?
 delete-many = Mover { $count } itens para a lixeira?
+delete-permanently = Excluir permanentemente
+delete-permanently-one = Excluir "{ $name }" permanentemente? Isso não pode ser desfeito.
+delete-permanently-many = Excluir { $count } itens permanentemente? Isso não pode ser desfeito.
 
 ## Barra de teclas de função (o app adiciona "F2" etc.)
 fkey-rename = Renomear
@@ -206,3 +214,47 @@ about-description = Um gerenciador de arquivos de dois painéis, feito para o te
 about-version = Versão:
 about-repository = Repositório:
 about-license = Licença:
+
+## Diálogo Conectar a um servidor
+connect-to-server = Conectar a um servidor…
+disconnect = Desconectar
+connect-title = Conectar a um servidor
+connect = Conectar
+connect-host = Servidor (ex.: arquivos.exemplo.com)
+connect-port = Porta
+connect-user = Usuário
+connect-password = Senha
+connect-hint-sftp = Primeiro são testados o seu agente SSH e as chaves em ~/.ssh, então a senha é opcional.
+connect-hint-ftp = Deixe o usuário vazio para entrar de forma anônima. O FTP envia a senha sem criptografia: prefira FTPS ou SFTP.
+connect-hint-ftps = FTP criptografado com TLS. O servidor precisa de um certificado válido.
+connect-connecting = Conectando…
+connect-error-host = Digite o nome ou o endereço do servidor.
+connect-error-port = A porta deve ser um número.
+connect-error-login = Falha no login: verifique o usuário e a senha.
+connect-unknown-host-title = Servidor desconhecido
+connect-unknown-host-body = O 2fip nunca se conectou a { $host }. Verifique se esta impressão digital da chave corresponde à do servidor e confie nela para conectar. Ela será salva em ~/.ssh/known_hosts.
+connect-trust = Confiar e conectar
+connect-key-changed-title = A chave do servidor mudou
+connect-key-changed-body = A chave de { $host } não corresponde à salva em ~/.ssh/known_hosts. Alguém pode estar interceptando a conexão, então o 2fip não vai conectar. Se o servidor foi reinstalado, remova a linha antiga dele de ~/.ssh/known_hosts.
+
+## Painel Conexões
+connections = Conexões
+tooltip-connections = Conexões
+connection-add = Adicionar conexão
+connection-edit = Editar conexão
+connection-save-only = Salvar
+connection-save = Salvar conexão
+connection-open = Abrir
+connection-reconnect = Reconectar
+connection-status-busy = Conectando…
+connection-status-connected = Conectado
+connection-status-lost = Conexão perdida
+connection-status-closed = Desconectado
+connections-saved = Salvas
+connections-open-unsaved = Abertas, não salvas
+connections-empty = Nenhuma conexão salva ainda.
+connections-hint = As senhas que você escolher lembrar ficam criptografadas no chaveiro do sistema (GNOME Keyring, KWallet), nunca nos arquivos do 2fip.
+connect-name = Nome (opcional)
+connect-password-stored = Salva no chaveiro (digite para alterar)
+connect-save = Salvar em Conexões
+connect-remember-password = Lembrar a senha no chaveiro do sistema

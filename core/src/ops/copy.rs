@@ -6,7 +6,7 @@ use tokio_stream::Stream;
 
 use super::engine::{copy_planned_files, StopReason};
 use super::plan::plan_into;
-use super::{CancelHandle, ConflictHandle, OpEvent};
+use super::{involves_server, CancelHandle, ConflictHandle, OpEvent};
 
 /// Copies `sources` into `dest_dir`, preserving directory structure for any
 /// directories among them. Emits [`OpEvent::Progress`] after each file, and
@@ -18,7 +18,13 @@ pub fn copy(
     conflict: ConflictHandle,
 ) -> impl Stream<Item = OpEvent> {
     let (tx, rx) = mpsc::channel(16);
-    tokio::spawn(run(sources, dest_dir, cancel, conflict, tx));
+    if involves_server(&sources, &dest_dir) {
+        tokio::spawn(crate::vfs::transfer::run_copy(
+            sources, dest_dir, false, cancel, conflict, tx,
+        ));
+    } else {
+        tokio::spawn(run(sources, dest_dir, cancel, conflict, tx));
+    }
     ReceiverStream::new(rx)
 }
 

@@ -21,6 +21,8 @@ pub enum Action {
     /// Moves the selection into the *other* pane (F6).
     Move,
     Delete,
+    /// Shift+Delete / Shift+F8: delete for good, without the trash.
+    DeletePermanently,
     Rename,
     NewFolder,
     NewTab,
@@ -76,8 +78,16 @@ pub enum Action {
     Refresh,
     /// Ctrl+F: the Find Files dialog.
     Find,
-    /// View → About 2fip (no shortcut).
+    /// Help → About 2fip (no shortcut).
     About,
+    /// F1: the online help, in the browser.
+    Help,
+    /// Ctrl+K: the "Connect to server" dialog (SFTP, FTP, FTPS).
+    ConnectToServer,
+    /// Closes the connection of the server the active panel shows.
+    Disconnect,
+    /// The Connections side panel (saved and open server connections).
+    Connections,
     Quit,
 }
 
@@ -103,9 +113,20 @@ pub fn default_keybinds() -> HashMap<KeyBind, Action> {
     };
 
     bind(&[], Key::Named(Named::Tab), Action::SwitchPane);
+    bind(&[], Key::Named(Named::F1), Action::Help);
     bind(&[], Key::Named(Named::F5), Action::Copy);
     bind(&[], Key::Named(Named::F6), Action::Move);
     bind(&[], Key::Named(Named::F8), Action::Delete);
+    bind(
+        &[Modifier::Shift],
+        Key::Named(Named::F8),
+        Action::DeletePermanently,
+    );
+    bind(
+        &[Modifier::Shift],
+        Key::Named(Named::Delete),
+        Action::DeletePermanently,
+    );
     bind(&[], Key::Named(Named::F2), Action::Rename);
     bind(&[], Key::Named(Named::F7), Action::NewFolder);
     bind(
@@ -205,6 +226,11 @@ pub fn default_keybinds() -> HashMap<KeyBind, Action> {
         Action::Refresh,
     );
     bind(&[Modifier::Ctrl], Key::Character("f".into()), Action::Find);
+    bind(
+        &[Modifier::Ctrl],
+        Key::Character("k".into()),
+        Action::ConnectToServer,
+    );
     bind(&[], Key::Named(Named::Delete), Action::Delete);
     bind(&[], Key::Named(Named::Enter), Action::Open);
     bind(&[Modifier::Ctrl], Key::Character("x".into()), Action::Cut);

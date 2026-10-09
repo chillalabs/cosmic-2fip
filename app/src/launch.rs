@@ -32,6 +32,43 @@ pub fn open_with_default_app(path: &Path) {
     }
 }
 
+/// Opens `path` with its default app, like [`open_with_default_app`]; a file
+/// on a server is downloaded to a local copy first (folders are skipped).
+pub fn open(path: PathBuf) -> cosmic::app::Task<crate::app::Message> {
+    if !fs_ops::vfs::is_remote(&path) {
+        open_with_default_app(&path);
+        return cosmic::app::Task::none();
+    }
+    cosmic::task::future(async move {
+        for local in local_paths(vec![path]).await {
+            open_with_default_app(&local);
+        }
+        crate::app::Message::Launched
+    })
+}
+
+/// `paths` with files on a server replaced by downloaded local copies (in
+/// `~/.cache/2fip/remote/`); server folders and failed downloads are left
+/// out. Edits to the copies stay local.
+pub async fn local_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut local = Vec::with_capacity(paths.len());
+    for path in paths {
+        if !fs_ops::vfs::is_remote(&path) {
+            local.push(path);
+            continue;
+        }
+        match fs_ops::vfs::stat(&path).await {
+            Ok(Some(stat)) if stat.kind == fs_ops::EntryKind::Dir => continue,
+            _ => {}
+        }
+        match fs_ops::vfs::local_copy(&path).await {
+            Ok(copy) => local.push(copy),
+            Err(err) => eprintln!("failed to download {}: {err}", path.display()),
+        }
+    }
+    local
+}
+
 /// Opens the user's default terminal with `dir` as its working directory.
 /// Fire-and-forget, output discarded, like [`open_with_default_app`].
 pub fn open_terminal(dir: &Path) {
@@ -209,6 +246,7 @@ pub enum OpenMode {
 
 /// Opens each file (folders are skipped) for viewing or editing.
 pub async fn view_or_edit(paths: Vec<PathBuf>, mode: OpenMode) {
+    let paths = local_paths(paths).await;
     let plan = tokio::task::spawn_blocking(move || plan_view_or_edit(&paths, mode))
         .await
         .unwrap_or_default();
@@ -382,6 +420,7 @@ fn default_app_id(mime: &str) -> Option<String> {
 /// Entry spec describes. Apps that take a single file (`%f`/`%u`) get one
 /// instance per path.
 pub async fn launch(app: AppEntry, paths: Vec<PathBuf>) {
+    let paths = local_paths(paths).await;
     if fs_ops::sandbox::in_flatpak() {
         launch_on_host(&app, &paths);
         return;

@@ -60,10 +60,22 @@ flatpak:
     flatpak run org.flatpak.Builder --user --install --force-clean \
         --state-dir=.flatpak-builder flatpak/build flatpak/io.github.chillalabs.TwoFip.yml
 
-# Re-create flatpak/cargo-sources.json after Cargo.lock changes (needs
-# flatpak-cargo-generator.py from flatpak/flatpak-builder-tools).
-flatpak-sources generator="flatpak-cargo-generator.py":
-    python3 {{generator}} Cargo.lock -o flatpak/cargo-sources.json
+# Re-create flatpak/cargo-sources.json after Cargo.lock changes (the Flatpak
+# builds offline). Downloads flatpak-builder-tools' generator and its Python
+# modules into ~/.cache/2fip-build the first time.
+flatpak-sources:
+    #!/bin/sh
+    set -eu
+    cache="${XDG_CACHE_HOME:-$HOME/.cache}/2fip-build"
+    generator="$cache/flatpak-cargo-generator.py"
+    mkdir -p "$cache"
+    if [ ! -f "$generator" ]; then
+        curl -fsSL -o "$generator" https://raw.githubusercontent.com/flatpak/flatpak-builder-tools/master/cargo/flatpak-cargo-generator.py
+    fi
+    if [ ! -d "$cache/pylib/aiohttp" ]; then
+        python3 -m pip install -q --target "$cache/pylib" "aiohttp>=3.9.5,<4" tomlkit
+    fi
+    PYTHONPATH="$cache/pylib" python3 "$generator" Cargo.lock -o flatpak/cargo-sources.json
 
 # Build and add a signed release to the chillalabs Flatpak repository (a
 # checkout of github.com/chillalabs/flatpak, served by GitHub Pages); then

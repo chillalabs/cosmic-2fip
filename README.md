@@ -25,6 +25,14 @@ desktop, inspired by Total Commander and COSMIC Files. Written in Rust with
 - **Color themes**: follow the desktop, or pick Light, Dark, Dracula, Nord,
   Catppuccin, Gruvbox, Tokyo Night, Solarized and more.
 - **Drag and drop** between the panels and other apps.
+- **Icon styles:** your icon theme, or 2fip's own Vivid, Windows style and
+  macOS style sets, or monochrome.
+- **Help:** press F1 for the [user's guide](https://chillalabs.github.io/twofip/).
+- **Servers** (Ctrl+K, File → Connect to server): browse **SFTP**, **FTP** and
+  **FTPS** folders in a panel and copy, move, rename and delete like local ones,
+  with progress. 2fip connects by itself (no system mounts), so it works the
+  same on any distribution and in the Flatpak/AppImage. SFTP logs in with your
+  SSH agent or `~/.ssh` keys (or a password) and checks `~/.ssh/known_hosts`.
 - **Find files** (Ctrl+F) by name or pattern (`*.pdf`) in the active folder and
   its subfolders; jump to a result with Enter or a double-click.
 
@@ -40,6 +48,7 @@ desktop, inspired by Total Commander and COSMIC Files. Written in Rust with
 | Backspace, ← | Parent folder |
 | Space | Calculate the size of the selected folders |
 | F2 … F9 | Rename, View, Edit, Copy, Move, New folder, Delete, Terminal |
+| Shift+Delete, Shift+F8 | Delete permanently (without the trash), after a confirmation |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste |
 | Ctrl+A | Select all |
 | Ctrl+S | Quick filter |
@@ -50,6 +59,8 @@ desktop, inspired by Total Commander and COSMIC Files. Written in Rust with
 | Ctrl+H | Show / hide hidden files |
 | Ctrl+R | Refresh both panels |
 | Ctrl+F | Find files in the active folder and its subfolders |
+| Ctrl+K | Connect to a server (SFTP, FTP, FTPS) |
+| F1 | Help (the online user's guide) |
 | Alt+Enter | File details |
 | Ctrl+, | Settings |
 | Ctrl+Q, Alt+F4 | Quit |
@@ -67,7 +78,7 @@ The Flatpak runs the terminal, other apps and thumbnailers on the host system
 ## AppImage
 
 Download `2fip-<version>-x86_64.AppImage` from the
-[latest release](https://github.com/chillalabs/cosmic-2fip/releases/latest),
+[latest release](https://github.com/chillalabs/twofip/releases/latest),
 make it executable and run it:
 
 ```sh

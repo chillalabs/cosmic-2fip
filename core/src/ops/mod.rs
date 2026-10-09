@@ -23,10 +23,16 @@ use std::sync::Arc;
 pub use compress::compress_zip;
 pub use conflict::{ConflictHandle, ConflictResolution};
 pub use copy::copy;
-pub use delete::delete_to_trash;
+pub use delete::{delete_permanently, delete_to_trash};
 pub use mkdir::create_dir;
 pub use mv::move_paths;
 pub use rename::rename;
+
+/// Whether a copy or move touches a server (then [`crate::vfs::transfer`]
+/// does it).
+pub(crate) fn involves_server(sources: &[PathBuf], dest_dir: &std::path::Path) -> bool {
+    crate::vfs::is_remote(dest_dir) || sources.iter().any(|source| crate::vfs::is_remote(source))
+}
 
 /// A cooperative cancellation flag shared between the UI and a running operation.
 #[derive(Debug, Clone, Default)]
