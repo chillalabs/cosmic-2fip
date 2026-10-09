@@ -125,6 +125,7 @@ mod tests {
         assert!(!file.exists());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn deletes_files_and_folders_permanently_but_not_link_targets() {
         let dir = tempfile::tempdir().unwrap();

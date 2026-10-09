@@ -91,6 +91,7 @@ fn connections_path() -> PathBuf {
 }
 
 /// The keyring attributes that find a connection's password.
+#[cfg(unix)]
 fn attributes(id: &str) -> [(&'static str, &str); 2] {
     [
         ("application", "io.github.chillalabs.TwoFip"),
@@ -101,6 +102,7 @@ fn attributes(id: &str) -> [(&'static str, &str); 2] {
 /// Stores the password of the connection `id` in the system keyring,
 /// replacing an older one. `label` is what keyring managers (e.g. Seahorse)
 /// show.
+#[cfg(unix)]
 pub async fn store_password(id: &str, label: &str, password: &str) -> Result<(), String> {
     let keyring = oo7::Keyring::new().await.map_err(keyring_error)?;
     keyring.unlock().await.map_err(keyring_error)?;
@@ -111,6 +113,7 @@ pub async fn store_password(id: &str, label: &str, password: &str) -> Result<(),
 }
 
 /// The password stored for the connection `id`, if any.
+#[cfg(unix)]
 pub async fn load_password(id: &str) -> Result<Option<String>, String> {
     let keyring = oo7::Keyring::new().await.map_err(keyring_error)?;
     keyring.unlock().await.map_err(keyring_error)?;
@@ -129,14 +132,33 @@ pub async fn load_password(id: &str) -> Result<Option<String>, String> {
 }
 
 /// Forgets the password of the connection `id` (no error if there's none).
+#[cfg(unix)]
 pub async fn delete_password(id: &str) -> Result<(), String> {
     let keyring = oo7::Keyring::new().await.map_err(keyring_error)?;
     keyring.unlock().await.map_err(keyring_error)?;
     keyring.delete(&attributes(id)).await.map_err(keyring_error)
 }
 
+#[cfg(unix)]
 fn keyring_error(err: oo7::Error) -> String {
     format!("system keyring: {err}")
+}
+
+// No system keyring outside Linux yet (Windows: Credential Manager, later),
+// so passwords are only kept for the session.
+#[cfg(not(unix))]
+pub async fn store_password(_id: &str, _label: &str, _password: &str) -> Result<(), String> {
+    Err("no system keyring on this platform yet".to_string())
+}
+
+#[cfg(not(unix))]
+pub async fn load_password(_id: &str) -> Result<Option<String>, String> {
+    Ok(None)
+}
+
+#[cfg(not(unix))]
+pub async fn delete_password(_id: &str) -> Result<(), String> {
+    Ok(())
 }
 
 /// Whether the active location `path` belongs to `connection`.

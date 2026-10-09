@@ -316,6 +316,9 @@ async fn authenticate(handle: &mut Handle<Client>, user: &str, password: Option<
         .flatten()
         .flatten();
 
+    // The agent is a Unix socket ($SSH_AUTH_SOCK); on Windows (a named pipe)
+    // it isn't supported yet.
+    #[cfg(unix)]
     if let Ok(mut agent) = keys::agent::client::AgentClient::connect_env().await {
         if let Ok(identities) = agent.request_identities().await {
             for identity in identities {

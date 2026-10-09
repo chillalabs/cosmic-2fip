@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use tokio::sync::mpsc;
@@ -99,12 +98,33 @@ fn plan(sources: &[PathBuf]) -> Result<Vec<ArchiveEntry>, String> {
                 } else {
                     0
                 },
-                mode: metadata.permissions().mode(),
+                mode: unix_mode(&metadata),
                 kind,
             });
         }
     }
     Ok(entries)
+}
+
+#[cfg(unix)]
+fn unix_mode(metadata: &std::fs::Metadata) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    metadata.permissions().mode()
+}
+
+/// The Unix permissions stored in the archive when the files have none.
+#[cfg(not(unix))]
+fn unix_mode(metadata: &std::fs::Metadata) -> u32 {
+    let base = if metadata.permissions().readonly() {
+        0o444
+    } else {
+        0o644
+    };
+    if metadata.is_dir() {
+        base | 0o111
+    } else {
+        base
+    }
 }
 
 fn write_archive(

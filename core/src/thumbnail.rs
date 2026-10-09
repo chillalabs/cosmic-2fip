@@ -56,9 +56,25 @@ pub fn thumbnail(path: &Path, mime: &str) -> Option<PathBuf> {
 /// `file://` URI for `path`, escaped like GLib's `g_filename_to_uri` (the
 /// spec's reference), so the cache file names match other file managers'.
 pub fn file_uri(path: &Path) -> String {
-    use std::os::unix::ffi::OsStrExt;
+    #[cfg(unix)]
+    let bytes = {
+        use std::os::unix::ffi::OsStrExt;
+        path.as_os_str().as_bytes().to_vec()
+    };
+    // Windows paths: forward slashes, and a leading slash before the drive
+    // (file:///C:/Users/...).
+    #[cfg(not(unix))]
+    let bytes = {
+        let path = path.to_string_lossy().replace('\\', "/");
+        let path = if path.starts_with('/') {
+            path
+        } else {
+            format!("/{path}")
+        };
+        path.into_bytes()
+    };
     let mut uri = String::from("file://");
-    for &byte in path.as_os_str().as_bytes() {
+    for &byte in &bytes {
         let unreserved = byte.is_ascii_alphanumeric() || b"-_.!~*'()/:@&=+$,".contains(&byte);
         if unreserved {
             uri.push(byte as char);
@@ -135,12 +151,19 @@ fn generate(path: &Path, mime: &str, uri: &str, mtime: u64, target: &Path) -> bo
     ok
 }
 
+#[cfg(unix)]
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(dir)
+}
+
+/// The user's profile folders are already private on Windows.
+#[cfg(not(unix))]
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dir)
 }
 
 /// Expands the thumbnailer's `Exec` line (`%s` size, `%u` URI, `%i` path,

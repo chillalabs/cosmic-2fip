@@ -103,10 +103,24 @@ pub(super) async fn copy_planned_files(
     Ok(())
 }
 
+#[cfg(unix)]
 async fn is_same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
     use std::os::unix::fs::MetadataExt;
     match (tokio::fs::metadata(a).await, tokio::fs::metadata(b).await) {
         (Ok(a), Ok(b)) => a.dev() == b.dev() && a.ino() == b.ino(),
+        _ => false,
+    }
+}
+
+/// Without inode numbers, two paths are the same file when they resolve to
+/// the same canonical path.
+#[cfg(not(unix))]
+async fn is_same_file(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (
+        tokio::fs::canonicalize(a).await,
+        tokio::fs::canonicalize(b).await,
+    ) {
+        (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
 }

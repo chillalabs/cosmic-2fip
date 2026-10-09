@@ -1,7 +1,6 @@
 //! Metadata for the "Show Details" dialog: everything `list_dir` doesn't
 //! already provide, including the recursive size of directories.
 
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -106,14 +105,59 @@ fn entry_details(path: &Path) -> Result<EntryDetails, String> {
         modified: metadata.modified().ok(),
         accessed: metadata.accessed().ok(),
         created: metadata.created().ok(),
-        mode: metadata.mode() & 0o7777,
-        owner: lookup_name("/etc/passwd", metadata.uid()),
-        group: lookup_name("/etc/group", metadata.gid()),
+        mode: permission_bits(&metadata),
+        owner: owner(&metadata),
+        group: group(&metadata),
     })
+}
+
+#[cfg(unix)]
+fn permission_bits(metadata: &std::fs::Metadata) -> u32 {
+    use std::os::unix::fs::MetadataExt;
+    metadata.mode() & 0o7777
+}
+
+#[cfg(unix)]
+fn owner(metadata: &std::fs::Metadata) -> String {
+    use std::os::unix::fs::MetadataExt;
+    lookup_name("/etc/passwd", metadata.uid())
+}
+
+#[cfg(unix)]
+fn group(metadata: &std::fs::Metadata) -> String {
+    use std::os::unix::fs::MetadataExt;
+    lookup_name("/etc/group", metadata.gid())
+}
+
+/// Without Unix permissions, the bits a Unix system would show: read-only
+/// or writable, and folders searchable.
+#[cfg(not(unix))]
+fn permission_bits(metadata: &std::fs::Metadata) -> u32 {
+    let base = if metadata.permissions().readonly() {
+        0o444
+    } else {
+        0o644
+    };
+    if metadata.is_dir() {
+        base | 0o111
+    } else {
+        base
+    }
+}
+
+#[cfg(not(unix))]
+fn owner(_metadata: &std::fs::Metadata) -> String {
+    String::new()
+}
+
+#[cfg(not(unix))]
+fn group(_metadata: &std::fs::Metadata) -> String {
+    String::new()
 }
 
 /// Resolves a uid/gid to its name via the local passwd/group file, falling
 /// back to the number itself (e.g. for LDAP users not listed there).
+#[cfg(unix)]
 fn lookup_name(db: &str, id: u32) -> String {
     std::fs::read_to_string(db)
         .ok()
