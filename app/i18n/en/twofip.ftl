@@ -66,6 +66,7 @@ status-selected = { $selected } of { $total } selected ({ $size })
 tooltip-back = Back (Alt+←)
 tooltip-forward = Forward (Alt+→)
 tooltip-up = Up one folder (Backspace)
+tooltip-drive = Drive
 tooltip-new-tab = New tab (Ctrl+T)
 tooltip-refresh = Refresh both panels (Ctrl+R)
 tooltip-edit-path = Edit path (Ctrl+L)

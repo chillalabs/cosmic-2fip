@@ -1,5 +1,6 @@
 pub mod connections;
 pub mod details;
+pub mod drives;
 mod entry;
 mod error;
 pub mod favorites;

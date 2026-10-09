@@ -66,6 +66,7 @@ status-selected = { $selected } sur { $total } sélectionnés ({ $size })
 tooltip-back = Précédent (Alt+←)
 tooltip-forward = Suivant (Alt+→)
 tooltip-up = Dossier parent (Retour arrière)
+tooltip-drive = Lecteur
 tooltip-new-tab = Nouvel onglet (Ctrl+T)
 tooltip-refresh = Actualiser les deux panneaux (Ctrl+R)
 tooltip-edit-path = Modifier le chemin (Ctrl+L)

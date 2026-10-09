@@ -932,6 +932,7 @@ impl PaneState {
         let header = widget::Row::new()
             .spacing(4)
             .align_y(cosmic::iced::Alignment::Center)
+            .push_maybe(drive_menu(tab_state))
             .push(nav_button(
                 widget::icon::from_name("go-previous-symbolic").handle(),
                 fl!("tooltip-back"),
@@ -1688,6 +1689,32 @@ pub fn resolve_typed_path(input: &str, current: &Path, home: &Path) -> PathBuf {
         }
     }
     resolved
+}
+
+/// Windows: a menu of the drives (`C:`, `D:`, ...) showing the current
+/// one; picking another goes to its root. `None` on Linux (one root).
+fn drive_menu(tab_state: Option<&TabState>) -> Option<Element<'static, PaneMessage>> {
+    let drives = fs_ops::drives::list();
+    if drives.is_empty() {
+        return None;
+    }
+    let labels: Vec<String> = drives
+        .iter()
+        .map(|drive| fs_ops::drives::label(drive))
+        .collect();
+    let current = tab_state.and_then(|tab| fs_ops::drives::drive_of(&tab.current_dir));
+    let selected = current.and_then(|current| drives.iter().position(|drive| *drive == current));
+    let menu = widget::dropdown(labels, selected, move |index| {
+        PaneMessage::Navigate(drives[index].clone())
+    });
+    Some(
+        widget::tooltip(
+            menu,
+            widget::text(fl!("tooltip-drive")),
+            widget::tooltip::Position::Bottom,
+        )
+        .into(),
+    )
 }
 
 pub fn home_dir() -> PathBuf {

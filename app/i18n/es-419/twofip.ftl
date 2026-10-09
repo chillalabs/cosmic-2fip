@@ -68,6 +68,7 @@ status-selected = { $selected } de { $total } seleccionados ({ $size })
 tooltip-back = Atrás (Alt+←)
 tooltip-forward = Adelante (Alt+→)
 tooltip-up = Subir una carpeta (Retroceso)
+tooltip-drive = Unidad
 tooltip-new-tab = Nueva pestaña (Ctrl+T)
 tooltip-refresh = Actualizar ambos paneles (Ctrl+R)
 tooltip-edit-path = Editar ruta (Ctrl+L)

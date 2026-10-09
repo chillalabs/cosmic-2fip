@@ -34,3 +34,7 @@ tempfile = "3"
 # GNOME Keyring, KWallet), or the Secret portal inside the Flatpak.
 [target.'cfg(unix)'.dependencies]
 oo7 = "0.6"
+
+# Drive letters for the drive menu.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

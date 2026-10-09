@@ -66,6 +66,7 @@ status-selected = { $selected } von { $total } ausgewählt ({ $size })
 tooltip-back = Zurück (Alt+←)
 tooltip-forward = Vorwärts (Alt+→)
 tooltip-up = Übergeordneter Ordner (Rücktaste)
+tooltip-drive = Laufwerk
 tooltip-new-tab = Neuer Tab (Ctrl+T)
 tooltip-refresh = Beide Bereiche aktualisieren (Ctrl+R)
 tooltip-edit-path = Pfad bearbeiten (Ctrl+L)
